@@ -37,6 +37,7 @@ npm-debug.log
 # We should explore valult for production level secrets
 **/*.secret.exs
 .*credentials.json
+.env.*.local
 
 # Ignore the dialyzer cache files
 /priv/plts/*.plt

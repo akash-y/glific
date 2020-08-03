@@ -6,15 +6,17 @@ defmodule Glific.Application do
   use Application
 
   def start(_type, _args) do
+    config = Vapor.load!(Glific.Config)
+
     children = [
       # Start the Ecto repository
-      Glific.Repo,
+      {Glific.Repo, config.db}
       # Start the Telemetry supervisor
       GlificWeb.Telemetry,
       # Start the PubSub system
       {Phoenix.PubSub, name: Glific.PubSub},
       # Start the Endpoint (http/https)
-      GlificWeb.Endpoint,
+      {GlificWeb.Endpoint, config.web},
 
       # Start Mnesia to be used for pow cache store
       Pow.Store.Backend.MnesiaCache,
