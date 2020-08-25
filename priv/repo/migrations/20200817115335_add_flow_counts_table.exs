@@ -16,8 +16,6 @@ defmodule Glific.Repo.Migrations.AddFlowCountsTable do
 
       add :count, :integer, default: 1
 
-      add :recent_messages, {:array, :map}, default: []
-
       timestamps(type: :utc_datetime)
     end
 

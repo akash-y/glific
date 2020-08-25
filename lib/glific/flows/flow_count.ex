@@ -15,7 +15,7 @@ defmodule Glific.Flows.FlowCount do
   }
 
   @required_fields [:uuid, :flow_id, :type, :flow_uuid]
-  @optional_fields [:destination_uuid, :recent_messages]
+  @optional_fields [:destination_uuid]
 
   @type t() :: %__MODULE__{
           __meta__: Ecto.Schema.Metadata.t(),
@@ -27,7 +27,6 @@ defmodule Glific.Flows.FlowCount do
           type: String.t() | nil,
           count: integer() | nil,
           destination_uuid: Ecto.UUID.t() | nil,
-          recent_messages: [map()] | nil,
           inserted_at: :utc_datetime | nil,
           updated_at: :utc_datetime | nil
         }
@@ -39,7 +38,6 @@ defmodule Glific.Flows.FlowCount do
     field :type, :string
     field :count, :integer
     field :destination_uuid, Ecto.UUID
-    field :recent_messages, {:array, :map}, default: []
 
     timestamps(type: :utc_datetime)
   end
@@ -82,23 +80,9 @@ defmodule Glific.Flows.FlowCount do
           on_conflict: [inc: [count: 1]],
           conflict_target: [:flow_id, :uuid, :type]
         )
-        |> update_recent_messages(attrs)
 
       {status, flow} ->
         {status, flow}
     end
   end
-
-  @spec update_recent_messages(FlowCount.t(), map()) :: :error | FlowCount.t()
-  defp update_recent_messages(flow_count, %{recent_message: []}), do: flow_count
-
-  defp update_recent_messages(flow_count, %{recent_message: recent_message}) do
-    recent_messages = [recent_message | flow_count.recent_messages]
-
-    flow_count
-    |> FlowCount.changeset(%{recent_messages: recent_messages})
-    |> Repo.update()
-  end
-
-  defp update_recent_messages(flow_count, _), do: flow_count
 end
