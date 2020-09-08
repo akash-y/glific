@@ -10,7 +10,7 @@ defmodule Glific.Application do
 
     children = [
       # Start the Ecto repository
-      {Glific.Repo, Keyword.new(config.db)},
+      {Glific.Repo, [url: config.db.url, pool_size: config.db.pool_size]},
 
       # Start the Telemetry supervisor
       GlificWeb.Telemetry,
@@ -19,10 +19,11 @@ defmodule Glific.Application do
       {Phoenix.PubSub, name: Glific.PubSub},
 
       # Start the Endpoint (http/https)
-      {GlificWeb.Endpoint, Keyword.new(config.web)},
+      {GlificWeb.Endpoint, [port: config.web.port]},
 
       # Start Mnesia to be used for pow cache store
       Pow.Store.Backend.MnesiaCache,
+
       # Add Oban to process jobs
       {Oban, oban_config()},
 

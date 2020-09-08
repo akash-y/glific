@@ -18,5 +18,4 @@ defmodule Glific.Config do
          env([
            {:port, "PORT", default: 4000, map: &String.to_integer/1}
          ])
-
 end
