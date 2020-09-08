@@ -1,4 +1,6 @@
 defmodule Glific do
+  import Ecto.Changeset
+
   @moduledoc """
   Glific keeps the contexts that define your domain
   and business logic.
@@ -26,6 +28,29 @@ defmodule Glific do
   end
 
   @doc """
+  Validates inputed shortcode, if shortcode is invalid it returns message that the shortcode is invalid
+  along with the valid shortcode.
+  """
+  @spec(
+    validate_shortcode(Ecto.Changeset.t()) :: Ecto.Changeset.t() | Ecto.Changeset.t(),
+    atom(),
+    String.t()
+  )
+  def validate_shortcode(%Ecto.Changeset{} = changeset) do
+    shortcode = Map.get(changeset.changes, :shortcode)
+    valid_shortcode = string_clean(shortcode)
+
+    if valid_shortcode == shortcode,
+      do: changeset,
+      else:
+        add_error(
+          changeset,
+          :shortcode,
+          "Invalid shortcode, valid shortcode will be  #{valid_shortcode}"
+        )
+  end
+
+  @doc """
   Lets get rid of all non valid characters. We are assuming any language and hence using unicode syntax
   and not restricting ourselves to alphanumeric
   """
@@ -38,4 +63,28 @@ defmodule Glific do
       |> String.replace(~r/[\p{P}\p{S}\p{Z}\p{C}]+/u, "")
       |> String.downcase()
       |> String.trim()
+
+  @doc """
+  See if the current time is within the past time units
+  """
+  @spec in_past_time(DateTime.t(), atom(), integer) :: boolean
+  def in_past_time(time, units \\ :hours, back \\ 24),
+    do: Timex.diff(DateTime.utc_now(), time, units) < back
+
+  @doc """
+  Return a time object where you go back x units. We introduce the notion
+  of hour and minute
+  """
+  @spec go_back_time(integer, DateTime.t(), atom()) :: DateTime.t()
+  def go_back_time(go_back, time \\ DateTime.utc_now(), unit \\ :hour) do
+    # convert hours to second
+    {unit, go_back} =
+      case unit do
+        :hour -> {:second, go_back * 60 * 60}
+        :minute -> {:second, go_back * 60}
+        _ -> {unit, go_back}
+      end
+
+    DateTime.add(time, -1 * go_back, unit)
+  end
 end

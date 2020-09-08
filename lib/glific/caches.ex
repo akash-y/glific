@@ -1,8 +1,9 @@
 defmodule Glific.Caches do
   @moduledoc """
-    Glific Cache management
+  Glific Cache management
   """
   @cache_bucket :glific_cache
+
   @behaviour Glific.Caches.CacheBehaviour
 
   @doc """
@@ -36,8 +37,10 @@ defmodule Glific.Caches do
   @impl Glific.Caches.CacheBehaviour
   @spec get(String.t() | atom()) :: {:ok, any()} | {:ok, false}
   def get(key) do
-    with {:ok, true} <- Cachex.exists?(@cache_bucket, key),
-         do: Cachex.get(@cache_bucket, key)
+    case Cachex.exists?(@cache_bucket, key) do
+      {:ok, true} -> Cachex.get(@cache_bucket, key)
+      _ -> {:ok, false}
+    end
   end
 
   @doc """
@@ -46,5 +49,8 @@ defmodule Glific.Caches do
   @impl Glific.Caches.CacheBehaviour
   @spec remove(list()) :: any()
   def remove(keys),
-    do: Enum.map(keys, fn key -> Cachex.del(@cache_bucket, key) end)
+    do:
+      Enum.map(keys, fn key ->
+        {:ok, _} = Cachex.del(@cache_bucket, key)
+      end)
 end

@@ -23,8 +23,15 @@ defmodule Glific.Searches do
 
   """
   @spec list_saved_searches(map()) :: [SavedSearch.t()]
-  def list_saved_searches(args \\ %{}),
+  def list_saved_searches(%{filter: %{organization_id: _organization_id}} = args),
     do: Repo.list_filter(args, SavedSearch, &Repo.opts_with_label/2, &Repo.filter_with/2)
+
+  @doc """
+  Returns the count of searches, using the same filter as list_saved_searches
+  """
+  @spec count_saved_searches(map()) :: integer
+  def count_saved_searches(%{filter: %{organization_id: _organization_id}} = args),
+    do: Repo.count_filter(args, SavedSearch, &Repo.filter_with/2)
 
   @doc """
   Gets a single search.
@@ -120,18 +127,21 @@ defmodule Glific.Searches do
     Message
     |> select([m], m.contact_id)
     |> where([m], m.message_number == 0)
+    |> where([m], m.organization_id == ^args.filter.organization_id)
     |> order_by([m], desc: m.updated_at)
     |> Full.run(term, args)
   end
 
   @spec do_save_search(map()) :: SavedSearch.t() | nil
-  defp do_save_search(%{save_search: true} = args),
-    do:
-      create_saved_search(%{
-        label: args.save_search_label,
-        shortcode: args.save_search_shortcode,
-        args: args
-      })
+  defp do_save_search(%{save_search_input: save_search_input} = args)
+       when save_search_input != nil,
+       do:
+         create_saved_search(%{
+           label: args.save_search_input.label,
+           shortcode: args.save_search_input.shortcode,
+           args: Map.put(args, :save_search_input, nil),
+           organization_id: args.filter.organization_id
+         })
 
   defp do_save_search(_args), do: nil
 
@@ -139,16 +149,21 @@ defmodule Glific.Searches do
   Full text search interface via Postgres
   """
   @spec search(map(), boolean) :: [Conversation.t()] | integer
-  def search(%{term: term} = args, count \\ false) do
+  def search(args, count \\ false) do
     # save the search if needed
     do_save_search(args)
 
-    # disabling all contact filters if we need to get the count
-    args = update_args_for_count(args, count)
+    args =
+      check_filter_for_save_search(args)
+      |> update_args_for_count(count)
 
     contact_ids =
-      search_query(term, args)
-      |> Repo.all()
+      if(args.filter[:ids]) do
+        args.filter[:ids]
+      else
+        search_query(args.filter[:term], args)
+        |> Repo.all()
+      end
 
     put_in(args, [Access.key(:filter, %{}), :ids], contact_ids)
     |> Glific.Conversations.list_conversations(count)
@@ -163,14 +178,11 @@ defmodule Glific.Searches do
   Execute a saved search, if term is sent in, it is added to
   the saved search. Either return conversations or count
   """
-  @spec saved_search_execute(map(), boolean) :: [Conversation.t()] | integer
-  def saved_search_execute(%{id: id} = args, count \\ false) do
-    get_saved_search!(id)
-    |> Map.get(:args)
-    |> add_term(Map.get(args, :term))
-    |> convert_to_atom()
-    |> search(count)
-  end
+  @spec saved_search_count(map()) :: [Conversation.t()] | integer
+  def saved_search_count(%{id: id} = args),
+    do:
+      saved_search_args_map(id, args)
+      |> search(true)
 
   @doc """
   Given a jsonb string, typically either from the database, or maybe via graphql
@@ -202,4 +214,23 @@ defmodule Glific.Searches do
   end
 
   defp update_args_for_count(args, false), do: args
+
+  # Get all the filters from saved search
+  @spec check_filter_for_save_search(map()) :: map()
+  defp check_filter_for_save_search(%{filter: %{saved_search_id: id}} = args),
+    do: saved_search_args_map(id, args)
+
+  defp check_filter_for_save_search(args), do: args
+
+  # Get the args map from the saved search and override the term
+  @spec saved_search_args_map(integer(), map) :: map()
+  defp saved_search_args_map(id, args) do
+    saved_search = get_saved_search!(id)
+
+    saved_search
+    |> Map.get(:args)
+    |> add_term(Map.get(args, :term))
+    |> convert_to_atom()
+    |> put_in([:filter, :organization_id], saved_search.organization_id)
+  end
 end

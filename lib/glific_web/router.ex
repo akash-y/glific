@@ -5,7 +5,6 @@ defmodule GlificWeb.Router do
   use GlificWeb, :router
   @dialyzer {:nowarn_function, __checks__: 0}
   use Plug.ErrorHandler
-  use Sentry.Plug
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -15,6 +14,12 @@ defmodule GlificWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers, %{"content-security-policy" => "default-src 'self'"}
     plug Pow.Plug.Session, otp_app: :glific
+  end
+
+  scope path: "/feature-flags" do
+    # ensure that this is protected once we have authentication in place
+    pipe_through :browser
+    forward "/", FunWithFlags.UI.Router, namespace: "feature-flags"
   end
 
   pipeline :api do
@@ -38,21 +43,14 @@ defmodule GlificWeb.Router do
     post "/session/renew", SessionController, :renew
   end
 
-  scope "/api/v1", GlificWeb.API.V1, as: :api_v1 do
-    pipe_through [:api, :api_protected]
-
-    # Your protected API endpoints here
-  end
-
   scope "/", GlificWeb do
     pipe_through :browser
-
     live "/", PageLive, :index
   end
 
   # Custom stack for Absinthe
   scope "/" do
-    pipe_through [:api]
+    pipe_through [:api, :api_protected]
 
     forward "/api", Absinthe.Plug, schema: GlificWeb.Schema
 
@@ -62,21 +60,8 @@ defmodule GlificWeb.Router do
       socket: GlificWeb.UserSocket
   end
 
-  # Custom stack for Absinthe
-  scope "/" do
-    pipe_through [:api, :api_protected]
-
-    forward "/secure/api", Glific.Absinthe.Plug, schema: GlificWeb.Schema
-
-    forward "/secure/graphiql", Glific.Absinthe.Plug.GraphiQL,
-      schema: GlificWeb.Schema,
-      interface: :simple,
-      socket: GlificWeb.UserSocket
-  end
-
   scope "/", GlificWeb do
     forward("/gupshup", Providers.Gupshup.Plugs.Shunt)
-    1
   end
 
   scope "/flow-editor", GlificWeb.Flows do

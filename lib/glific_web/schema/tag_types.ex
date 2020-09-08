@@ -17,7 +17,9 @@ defmodule GlificWeb.Schema.TagTypes do
   object :tag do
     field :id, :id
     field :label, :string
+    field :shortcode, :string
     field :description, :string
+    field :color_code, :string
     field :is_active, :boolean
     field :is_reserved, :boolean
     field :keywords, list_of(:string)
@@ -35,6 +37,9 @@ defmodule GlificWeb.Schema.TagTypes do
   input_object :tag_filter do
     @desc "Match the label"
     field :label, :string
+
+    @desc "Match the shortcode"
+    field :shortcode, :string
 
     @desc "Match the description"
     field :description, :string
@@ -60,10 +65,13 @@ defmodule GlificWeb.Schema.TagTypes do
 
   input_object :tag_input do
     field :label, :string
+    field :shortcode, :string
     field :description, :string
+    field :color_code, :string
     field :is_active, :boolean
     field :is_reserved, :boolean
     field :language_id, :id
+    field :parent_id, :id
     field :keywords, list_of(:string)
   end
 

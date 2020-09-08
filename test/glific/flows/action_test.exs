@@ -3,6 +3,7 @@ defmodule Glific.Flows.ActionTest do
 
   alias Glific.{
     Contacts,
+    Partners,
     Seeds.SeedsDev,
     Settings
   }
@@ -132,11 +133,22 @@ defmodule Glific.Flows.ActionTest do
     assert_raise ArgumentError, fn -> Action.process(json, %{}, node) end
   end
 
-  test "execute an action when type is send_msg" do
-    [contact | _] = Contacts.list_contacts(%{filter: %{name: "Default receiver"}})
+  test "execute an action when type is send_msg", attrs do
+    Partners.organization(attrs.organization_id)
+
+    [contact | _] =
+      Contacts.list_contacts(%{filter: Map.merge(attrs, %{name: "Default receiver"})})
 
     # preload contact
-    context = %FlowContext{contact_id: contact.id} |> Repo.preload(:contact)
+    attrs = %{
+      flow_id: 1,
+      flow_uuid: Ecto.UUID.generate(),
+      contact_id: contact.id
+    }
+
+    # preload contact
+    {:ok, context} = FlowContext.create_flow_context(attrs)
+    context = Repo.preload(context, :contact)
 
     action = %Action{type: "send_msg", text: "This is a test message"}
 
@@ -155,11 +167,12 @@ defmodule Glific.Flows.ActionTest do
     assert message.body == "This is a test message"
   end
 
-  test "execute an action when type is set_contact_language" do
+  test "execute an action when type is set_contact_language", attrs do
     language_label = "English (United States)"
     [language | _] = Settings.list_languages(%{filter: %{label: language_label}})
 
-    [contact | _] = Contacts.list_contacts(%{filter: %{name: "Default receiver"}})
+    [contact | _] =
+      Contacts.list_contacts(%{filter: Map.merge(attrs, %{name: "Default receiver"})})
 
     # preload contact
     context = %FlowContext{contact_id: contact.id} |> Repo.preload(:contact)
@@ -174,8 +187,9 @@ defmodule Glific.Flows.ActionTest do
     assert updated_context.contact.language_id == language.id
   end
 
-  test "execute an action when type is set_contact_name" do
-    [contact | _] = Contacts.list_contacts(%{filter: %{name: "Default receiver"}})
+  test "execute an action when type is set_contact_name", attrs do
+    [contact | _] =
+      Contacts.list_contacts(%{filter: Map.merge(attrs, %{name: "Default receiver"})})
 
     # preload contact
     context = %FlowContext{contact_id: contact.id} |> Repo.preload(:contact)
@@ -190,8 +204,9 @@ defmodule Glific.Flows.ActionTest do
     assert updated_context.contact.name == action.value
   end
 
-  test "execute an action when type is set_contact_field to set contact preferences" do
-    [contact | _] = Contacts.list_contacts(%{filter: %{name: "Default receiver"}})
+  test "execute an action when type is set_contact_field to set contact preferences", attrs do
+    [contact | _] =
+      Contacts.list_contacts(%{filter: Map.merge(attrs, %{name: "Default receiver"})})
 
     context =
       %FlowContext{contact_id: contact.id, results: %{"test_result" => "preference1"}}
@@ -211,8 +226,9 @@ defmodule Glific.Flows.ActionTest do
     assert updated_context.contact.settings["preferences"]["preference1"] == true
   end
 
-  test "execute an action when type is set_contact_field to add contact field" do
-    [contact | _] = Contacts.list_contacts(%{filter: %{name: "Default receiver"}})
+  test "execute an action when type is set_contact_field to add contact field", attrs do
+    [contact | _] =
+      Contacts.list_contacts(%{filter: Map.merge(attrs, %{name: "Default receiver"})})
 
     context =
       %FlowContext{contact_id: contact.id, results: %{"test_result" => "field1"}}
@@ -234,8 +250,11 @@ defmodule Glific.Flows.ActionTest do
     assert updated_context.contact.fields[action.field.key].type == "string"
   end
 
-  test "execute an action when type is enter_flow" do
-    [contact | _] = Contacts.list_contacts(%{filter: %{name: "Default receiver"}})
+  test "execute an action when type is enter_flow", attrs do
+    Partners.organization(attrs.organization_id)
+
+    [contact | _] =
+      Contacts.list_contacts(%{filter: Map.merge(attrs, %{name: "Default receiver"})})
 
     # preload contact
     context = %FlowContext{contact_id: contact.id} |> Repo.preload(:contact)

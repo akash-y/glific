@@ -6,6 +6,7 @@ defmodule GlificWeb.Schema.UserTypes do
   import Absinthe.Resolution.Helpers, only: [dataloader: 1]
 
   alias Glific.Repo
+  alias Glific.Users.User
   alias GlificWeb.Resolvers
 
   object :user_result do
@@ -17,11 +18,20 @@ defmodule GlificWeb.Schema.UserTypes do
     field :id, :id
     field :name, :string
     field :phone, :string
-    field :roles, list_of(:string)
+    field :roles, list_of(:role_label)
+
+    field :contact, :contact do
+      resolve(dataloader(Repo))
+    end
 
     field :groups, list_of(:group) do
       resolve(dataloader(Repo))
     end
+  end
+
+  object :role do
+    field :id, :id
+    field :label, :string
   end
 
   @desc "Filtering options for users"
@@ -33,14 +43,26 @@ defmodule GlificWeb.Schema.UserTypes do
     field :phone, :string
   end
 
-  input_object :user_input do
+  input_object :current_user_input do
     field :name, :string
-    field :roles, list_of(:string)
     field :password, :string
     field :otp, :string
   end
 
+  input_object :user_input do
+    field :name, :string
+    field :roles, list_of(:role_label)
+    field :group_ids, list_of(:id)
+  end
+
   object :user_queries do
+    @desc "get list of roles"
+    field :roles, list_of(:role_label) do
+      resolve(fn _, _, _ ->
+        {:ok, User.get_roles_list()}
+      end)
+    end
+
     @desc "get the details of one user"
     field :user, :user_result do
       arg(:id, non_null(:id))
@@ -59,18 +81,28 @@ defmodule GlificWeb.Schema.UserTypes do
       arg(:filter, :user_filter)
       resolve(&Resolvers.Users.count_users/3)
     end
+
+    @desc "Get the details of current user"
+    field :current_user, :user_result do
+      resolve(&Resolvers.Users.current_user/3)
+    end
   end
 
   object :user_mutations do
-    field :update_user, :user_result do
-      arg(:id, non_null(:id))
-      arg(:input, :user_input)
-      resolve(&Resolvers.Users.update_user/3)
+    field :update_current_user, :user_result do
+      arg(:input, non_null(:current_user_input))
+      resolve(&Resolvers.Users.update_current_user/3)
     end
 
     field :delete_user, :user_result do
       arg(:id, non_null(:id))
       resolve(&Resolvers.Users.delete_user/3)
+    end
+
+    field :update_user, :user_result do
+      arg(:id, non_null(:id))
+      arg(:input, non_null(:user_input))
+      resolve(&Resolvers.Users.update_user/3)
     end
   end
 end

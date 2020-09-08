@@ -6,6 +6,7 @@ defmodule GlificWeb.Resolvers.Groups do
 
   alias Glific.{Groups, Groups.Group, Repo}
   alias Glific.{Groups.ContactGroup, Groups.UserGroup}
+  alias GlificWeb.Resolvers.Helper
 
   @doc """
   Get a specific group by id
@@ -21,16 +22,16 @@ defmodule GlificWeb.Resolvers.Groups do
   Get the list of groups filtered by args
   """
   @spec groups(Absinthe.Resolution.t(), map(), %{context: map()}) :: {:ok, [Group]}
-  def groups(_, args, _) do
-    {:ok, Groups.list_groups(args)}
+  def groups(_, args, context) do
+    {:ok, Groups.list_groups(Helper.add_org_filter(args, context))}
   end
 
   @doc """
   Get the count of groups filtered by args
   """
   @spec count_groups(Absinthe.Resolution.t(), map(), %{context: map()}) :: {:ok, integer}
-  def count_groups(_, args, _) do
-    {:ok, Groups.count_groups(args)}
+  def count_groups(_, args, context) do
+    {:ok, Groups.count_groups(Helper.add_org_filter(args, context))}
   end
 
   @doc """
@@ -69,6 +70,18 @@ defmodule GlificWeb.Resolvers.Groups do
   end
 
   @doc """
+  Get count of group contacts
+  """
+  @spec contacts_count(Absinthe.Resolution.t(), map(), %{context: map()}) :: {:ok, integer}
+  def contacts_count(_, params, _), do: {:ok, Groups.contacts_count(params)}
+
+  @doc """
+  Get count of group users
+  """
+  @spec users_count(Absinthe.Resolution.t(), map(), %{context: map()}) :: {:ok, integer}
+  def users_count(_, params, _), do: {:ok, Groups.users_count(params)}
+
+  @doc """
   Creates an contact group entry
   """
   @spec create_contact_group(Absinthe.Resolution.t(), %{input: map()}, %{context: map()}) ::
@@ -77,6 +90,22 @@ defmodule GlificWeb.Resolvers.Groups do
     with {:ok, contact_group} <- Groups.create_contact_group(params) do
       {:ok, %{contact_group: contact_group}}
     end
+  end
+
+  @doc false
+  @spec update_group_contacts(Absinthe.Resolution.t(), %{input: map()}, %{context: map()}) ::
+          {:ok, any} | {:error, any}
+  def update_group_contacts(_, %{input: params}, _) do
+    group_contacts = Groups.GroupContacts.update_group_contacts(params)
+    {:ok, group_contacts}
+  end
+
+  @doc false
+  @spec update_contact_groups(Absinthe.Resolution.t(), %{input: map()}, %{context: map()}) ::
+          {:ok, any} | {:error, any}
+  def update_contact_groups(_, %{input: params}, _) do
+    group_contacts = Groups.ContactGroups.update_contact_groups(params)
+    {:ok, group_contacts}
   end
 
   @doc """
@@ -100,6 +129,22 @@ defmodule GlificWeb.Resolvers.Groups do
     with {:ok, user_group} <- Groups.create_user_group(params) do
       {:ok, %{user_group: user_group}}
     end
+  end
+
+  @doc false
+  @spec update_group_users(Absinthe.Resolution.t(), %{input: map()}, %{context: map()}) ::
+          {:ok, any} | {:error, any}
+  def update_group_users(_, %{input: params}, _) do
+    group_users = Groups.GroupUsers.update_group_users(params)
+    {:ok, group_users}
+  end
+
+  @doc false
+  @spec update_user_groups(Absinthe.Resolution.t(), %{input: map()}, %{context: map()}) ::
+          {:ok, any} | {:error, any}
+  def update_user_groups(_, %{input: params}, _) do
+    group_users = Groups.UserGroups.update_user_groups(params)
+    {:ok, group_users}
   end
 
   @doc """

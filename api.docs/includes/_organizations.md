@@ -11,6 +11,8 @@ query organizations($filter: OrganizationFilter, $opts: Opts) {
       id
       label
     }
+    isActive
+    timezone
   }
 }
 
@@ -38,7 +40,9 @@ query organizations($filter: OrganizationFilter, $opts: Opts) {
           "label": "Hindi"
         },
         "id": "1",
-        "name": "Default Organization"
+        "name": "Default Organization",
+        "isActive": true,
+        "timezone": "Asia/Kolkata"
       },
       {
         "defaultLanguage": {
@@ -46,7 +50,9 @@ query organizations($filter: OrganizationFilter, $opts: Opts) {
           "label": "Hindi"
         },
         "id": "2",
-        "name": "Slam Out Loud"
+        "name": "Slam Out Loud",
+        "isActive": true,
+        "timezone": "Asia/Kolkata"
       }
     ]
   }
@@ -69,11 +75,13 @@ Type | Description
 ## Get a specific Organization by ID
 
 ```graphql
-query organization($id: ID!) {
+query organization($id: ID) {
   organization(id: $id) {
     organization {
       id
       name
+      isActive
+      timezone
       defaultLanguage {
         id
         label
@@ -99,8 +107,23 @@ query organization($id: ID!) {
           "label": "Hindi"
         },
         "id": "1",
-        "name": "Default Organization"
+        "name": "Default Organization",
+        "isActive": true,
+        "timezone": "Asia/Kolkata"
       }
+    }
+  }
+}
+```
+
+> Get current user's organization details
+
+```graphql
+query organization {
+  organization {
+    organization {
+      id
+      name
     }
   }
 }
@@ -110,12 +133,12 @@ query organization($id: ID!) {
 
 Parameter | Type | Default | Description
 --------- | ---- | ------- | -----------
-filter | <a href="#organizationfilter">OrganizationFilter</a> | nil | filter the list
+id | <a href="#id">ID</a> ||
 
 ### Return Parameters
 Type | Description
 | ---- | -----------
-<a href="#organizationresult">OrganizationResult</a> | Queried Organization
+<a href="#organizationresult">OrganizationResult</a> | Queried organization or Current user's organization
 
 ## Count all Organizations
 
@@ -160,15 +183,17 @@ mutation createOrganization($input:OrganizationInput!) {
     organization {
       id
       name
-      displayName
-      contactName
+      shortcode
+      contact {
+        id
+      }
 			email
       provider {
         id
         name
       }
       providerKey
-      providerNumber
+      providerPhone
       defaultLanguage {
         id
         label
@@ -183,13 +208,13 @@ mutation createOrganization($input:OrganizationInput!) {
 
 {
   "input": {
-    "name": "new_organization",
-    "displayName": "new organization",
-    "contactName": "organization's contact",
+    "shortcode": "new_organization",
+    "name": "new organization",
+    "contactId": 1,
     "email": "test@test.com",
     "providerId": 1,
     "providerKey": "Key provided by provider",
-    "providerNumber": "Number",
+    "providerPhone": "Number",
     "defaultLanguageId": 1
   }
 }
@@ -203,21 +228,23 @@ mutation createOrganization($input:OrganizationInput!) {
     "createOrganization": {
       "errors": null,
       "organization": {
-        "contactName": "organization's contact",
+        "contact": {
+          "id": "1"
+        },
         "defaultLanguage": {
           "id": "1",
           "label": "Hindi"
         },
-        "displayName": "new organization",
+        "name": "new organization",
         "email": "test@test.com",
         "id": "3",
-        "name": "new_organization",
+        "shortcode": "new_organization",
         "provider": {
           "id": "1",
           "name": "Default Provider"
         },
         "providerKey": "Key provided by provider",
-        "providerNumber": "Number"
+        "providerPhone": "Number"
       }
     }
   }
@@ -238,12 +265,22 @@ Type | Description
 ## Update an Organization
 
 ```graphql
-mutation updateOrganization($id: ID!, $input:OrganizationInput!) {
+mutation updateOrganization($id: ID!, $input: OrganizationInput!) {
   updateOrganization(id: $id, input: $input) {
     organization {
       id
       name
-      displayName
+      shortcode
+      outOfOffice {
+        enabled
+        startTime
+        endTime
+        flowId
+        enabledDays {
+          id
+          enabled
+        }
+      }
     }
     errors {
       key
@@ -255,7 +292,43 @@ mutation updateOrganization($id: ID!, $input:OrganizationInput!) {
 {
   "id": "1",
   "input": {
-    "display_name": "updated organization display name"
+    "name": "updated organization display name",
+    "outOfOffice": {
+      "enabled": true,
+      "enabledDays": [
+        {
+          "enabled": true,
+          "id": 1
+        },
+        {
+          "enabled": true,
+          "id": 2
+        },
+        {
+          "enabled": true,
+          "id": 3
+        },
+        {
+          "enabled": true,
+          "id": 4
+        },
+        {
+          "enabled": true,
+          "id": 5
+        },
+        {
+          "enabled": false,
+          "id": 6
+        },
+        {
+          "enabled": false,
+          "id": 7
+        }
+      ],
+      "endTime": "T19:00:00",
+      "flowId": 1,
+      "startTime": "T09:00:00"
+    }
   }
 }
 ```
@@ -268,14 +341,52 @@ mutation updateOrganization($id: ID!, $input:OrganizationInput!) {
     "updateOrganization": {
       "errors": null,
       "organization": {
-        "displayName": "updated organization display name",
+        "name": "updated organization display name",
         "id": "1",
-        "name": "Default Organization"
+        "name": "Glific",
+        "outOfOffice": {
+          "enabled": true,
+          "enabledDays": [
+            {
+              "enabled": true,
+              "id": 1
+            },
+            {
+              "enabled": true,
+              "id": 2
+            },
+            {
+              "enabled": true,
+              "id": 3
+            },
+            {
+              "enabled": true,
+              "id": 4
+            },
+            {
+              "enabled": true,
+              "id": 5
+            },
+            {
+              "enabled": false,
+              "id": 6
+            },
+            {
+              "enabled": false,
+              "id": 7
+            }
+          ],
+          "endTime": "19:00:00",
+          "flowId": "1",
+          "startTime": "9:00:00"
+        }
       }
     }
   }
 }
 ```
+
+Enabled days Ids represets weekdays starting from 1 for Monday.
 
 ### Query Parameters
 
@@ -347,6 +458,35 @@ Type | Description
 --------- | ---- | ------- | -----------
 <a href="#organizationresult">OrganizationResult</a> | An error object or empty
 
+## Get List of Timezones
+```graphql
+query timezones {
+  timezones
+}
+```
+
+> The above query returns JSON structured like this:
+
+```json
+
+{
+  "data": {
+    "timezones": [
+      "Africa/Abidjan",
+      "Africa/Accra",
+      "Africa/Addis_Ababa",
+      ...
+    ]
+  }
+}
+```
+This returns list of timezones
+
+### Return Parameters
+Type | Description
+| ---- | -----------
+[<a href="#string">String</a>] | List of timezones
+
 ## Organization Objects
 
 ### Organization
@@ -367,17 +507,12 @@ Type | Description
 <td></td>
 </tr>
 <tr>
-<td colspan="2" valign="top"><strong>contactName</strong></td>
-<td valign="top"><a href="#string">String</a></td>
-<td></td>
-</tr>
-<tr>
 <td colspan="2" valign="top"><strong>defaultLanguage</strong></td>
 <td valign="top"><a href="#language">Language</a></td>
 <td></td>
 </tr>
 <tr>
-<td colspan="2" valign="top"><strong>displayName</strong></td>
+<td colspan="2" valign="top"><strong>shortcode</strong></td>
 <td valign="top"><a href="#string">String</a></td>
 <td></td>
 </tr>
@@ -407,7 +542,22 @@ Type | Description
 <td></td>
 </tr>
 <tr>
-<td colspan="2" valign="top"><strong>providerNumber</strong></td>
+<td colspan="2" valign="top"><strong>providerPhone</strong></td>
+<td valign="top"><a href="#string">String</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>outOfOffice</strong></td>
+<td valign="top"><a href="#outofoffice">OutOfOffice</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>isActive</strong></td>
+<td valign="top"><a href="#boolean">Boolean</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>timezone</strong></td>
 <td valign="top"><a href="#string">String</a></td>
 <td></td>
 </tr>
@@ -439,6 +589,73 @@ Type | Description
 </tbody>
 </table>
 
+### OutOfOffice
+
+<table>
+<thead>
+<tr>
+<th align="left">Field</th>
+<th align="right">Argument</th>
+<th align="left">Type</th>
+<th align="left">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td colspan="2" valign="top"><strong>enabled</strong></td>
+<td valign="top"><a href="#boolean">Boolean</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>startTime</strong></td>
+<td valign="top"><a href="#time">Time</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>endTime</strong></td>
+<td valign="top"><a href="#time">Time</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>enabledDays</strong></td>
+<td valign="top">[<a href="#enabledday">EnabledDay</a>]</td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>flow_id</strong></td>
+<td valign="top"><a href="#id">ID</a></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+
+### EnabledDay
+
+<table>
+<thead>
+<tr>
+<th align="left">Field</th>
+<th align="right">Argument</th>
+<th align="left">Type</th>
+<th align="left">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td colspan="2" valign="top"><strong>id</strong></td>
+<td valign="top"><a href="#integer">Integer</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>enabled</strong></td>
+<td valign="top"><a href="#boolean">Boolean</a></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+
+
+
 ## Organization Inputs ##
 
 
@@ -456,15 +673,6 @@ Filtering options for organizations
 </thead>
 <tbody>
 <tr>
-<td colspan="2" valign="top"><strong>contactName</strong></td>
-<td valign="top"><a href="#string">String</a></td>
-<td>
-
-Match the contact name
-
-</td>
-</tr>
-<tr>
 <td colspan="2" valign="top"><strong>defaultLanguage</strong></td>
 <td valign="top"><a href="#string">String</a></td>
 <td>
@@ -474,11 +682,11 @@ Match the default language
 </td>
 </tr>
 <tr>
-<td colspan="2" valign="top"><strong>displayName</strong></td>
+<td colspan="2" valign="top"><strong>shortcode</strong></td>
 <td valign="top"><a href="#string">String</a></td>
 <td>
 
-Match the display name
+Match the shortcode
 
 </td>
 </tr>
@@ -510,7 +718,7 @@ Match the provider
 </td>
 </tr>
 <tr>
-<td colspan="2" valign="top"><strong>providerNumber</strong></td>
+<td colspan="2" valign="top"><strong>providerPhone</strong></td>
 <td valign="top"><a href="#string">String</a></td>
 <td>
 
@@ -552,17 +760,12 @@ Unique
 </td>
 </tr>
 <tr>
-<td colspan="2" valign="top"><strong>contactName</strong></td>
-<td valign="top"><a href="#string">String</a></td>
-<td></td>
-</tr>
-<tr>
 <td colspan="2" valign="top"><strong>defaultLanguageId</strong></td>
 <td valign="top"><a href="#id">ID</a></td>
 <td></td>
 </tr>
 <tr>
-<td colspan="2" valign="top"><strong>displayName</strong></td>
+<td colspan="2" valign="top"><strong>shortcode</strong></td>
 <td valign="top"><a href="#string">String</a></td>
 <td></td>
 </tr>
@@ -582,8 +785,90 @@ Unique
 <td></td>
 </tr>
 <tr>
-<td colspan="2" valign="top"><strong>providerNumber</strong></td>
+<td colspan="2" valign="top"><strong>providerPhone</strong></td>
 <td valign="top"><a href="#string">String</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>outOfOfficeInput</strong></td>
+<td valign="top"><a href="#outofofficeinput">OutOfOfficeInput</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>isActive</strong></td>
+<td valign="top"><a href="#boolean">Boolean</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>timezone</strong></td>
+<td valign="top"><a href="#string">String</a></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+
+
+
+### OutOfOfficeInput
+
+<table>
+<thead>
+<tr>
+<th align="left">Field</th>
+<th align="right">Argument</th>
+<th align="left">Type</th>
+<th align="left">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td colspan="2" valign="top"><strong>enabled</strong></td>
+<td valign="top"><a href="#boolean">Boolean</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>startTime</strong></td>
+<td valign="top"><a href="#time">Time</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>endTime</strong></td>
+<td valign="top"><a href="#time">Time</a></td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>enabledDays</strong></td>
+<td valign="top">[<a href="#enableddayinput">EnabledDayInput</a>]</td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>flow_id</strong></td>
+<td valign="top"><a href="#id">ID</a></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+
+### EnabledDayInput
+
+<table>
+<thead>
+<tr>
+<th align="left">Field</th>
+<th align="right">Argument</th>
+<th align="left">Type</th>
+<th align="left">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td colspan="2" valign="top"><strong>id</strong></td>
+<td valign="top"><a href="#integer">Integer</a>!</td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>enabled</strong></td>
+<td valign="top"><a href="#boolean">Boolean</a>!</td>
 <td></td>
 </tr>
 </tbody>

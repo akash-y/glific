@@ -2,25 +2,42 @@ defmodule Glific.Messages.Message do
   @moduledoc false
   use Ecto.Schema
   import Ecto.Changeset
+
   alias __MODULE__
 
-  alias Glific.{Contacts.Contact, Messages.MessageMedia, Tags.Tag, Users.User}
+  alias Glific.{
+    Contacts.Contact,
+    Messages.MessageMedia,
+    Partners.Organization,
+    Tags.Tag,
+    Users.User
+  }
+
   alias Glific.Enums.{MessageFlow, MessageStatus, MessageType}
 
   @type t() :: %__MODULE__{
           __meta__: Ecto.Schema.Metadata.t(),
           id: non_neg_integer | nil,
+          uuid: Ecto.UUID.t() | nil,
           type: String.t() | nil,
           is_hsm: boolean | nil,
           flow: String.t() | nil,
           status: String.t() | nil,
           provider_status: String.t() | nil,
+          errors: map() | nil,
           message_number: integer(),
+          sender_id: non_neg_integer | nil,
           sender: Contact.t() | Ecto.Association.NotLoaded.t() | nil,
+          receiver_id: non_neg_integer | nil,
           receiver: Contact.t() | Ecto.Association.NotLoaded.t() | nil,
+          contact_id: non_neg_integer | nil,
           contact: Contact.t() | Ecto.Association.NotLoaded.t() | nil,
+          user_id: non_neg_integer | nil,
           user: User.t() | Ecto.Association.NotLoaded.t() | nil,
+          media_id: non_neg_integer | nil,
           media: MessageMedia.t() | Ecto.Association.NotLoaded.t() | nil,
+          organization_id: non_neg_integer | nil,
+          organization: Organization.t() | Ecto.Association.NotLoaded.t() | nil,
           body: String.t() | nil,
           provider_message_id: String.t() | nil,
           send_at: :utc_datetime | nil,
@@ -34,14 +51,17 @@ defmodule Glific.Messages.Message do
     :flow,
     :sender_id,
     :receiver_id,
-    :contact_id
+    :contact_id,
+    :organization_id
   ]
   @optional_fields [
+    :uuid,
     :body,
     :is_hsm,
     :status,
     :provider_status,
     :provider_message_id,
+    :errors,
     :media_id,
     :send_at,
     :sent_at,
@@ -49,6 +69,7 @@ defmodule Glific.Messages.Message do
   ]
 
   schema "messages" do
+    field :uuid, Ecto.UUID
     field :body, :string
     field :flow, MessageFlow
     field :type, MessageType
@@ -58,6 +79,7 @@ defmodule Glific.Messages.Message do
 
     field :provider_message_id, :string
     field :provider_status, MessageStatus
+    field :errors, :map, default: %{}
     field :send_at, :utc_datetime
     field :sent_at, :utc_datetime
     field :message_number, :integer, default: 0
@@ -65,10 +87,9 @@ defmodule Glific.Messages.Message do
     belongs_to :sender, Contact
     belongs_to :receiver, Contact
     belongs_to :contact, Contact
-
     belongs_to :user, User
-
     belongs_to :media, MessageMedia
+    belongs_to :organization, Organization
 
     many_to_many :tags, Tag, join_through: "messages_tags", on_replace: :delete
 

@@ -8,10 +8,9 @@ defmodule Glific.Processor.ConsumerTagger do
   use GenStage
 
   alias Glific.{
-    Communications,
-    Flows,
-    Flows.FlowContext,
+    Dialogflow.Sessions,
     Messages.Message,
+    Processor.ConsumerFlow,
     Processor.Helper,
     Repo,
     Taggers,
@@ -22,7 +21,6 @@ defmodule Glific.Processor.ConsumerTagger do
 
   @min_demand 0
   @max_demand 1
-  @wakeup_timeout_ms 1 * 60 * 1000
 
   @doc false
   @spec start_link([]) :: GenServer.on_start()
@@ -39,12 +37,12 @@ defmodule Glific.Processor.ConsumerTagger do
         producer: opts[:producer],
         numeric_map: Numeric.get_numeric_map(),
         numeric_tag_id: 0,
-        flows: %{}
+        flows: %{},
+        dialogflow_session_id: Ecto.UUID.generate(),
+        organization_id: 1,
+        tagged: false
       }
       |> reload
-
-    # process the wakeup queue every 1 minute
-    Process.send_after(self(), :wakeup_timeout, @wakeup_timeout_ms)
 
     {
       :consumer,
@@ -60,13 +58,18 @@ defmodule Glific.Processor.ConsumerTagger do
   end
 
   defp reload(%{numeric_tag_id: numeric_tag_id} = state) when numeric_tag_id == 0 do
-    case Repo.fetch_by(Tag, %{label: "Numeric"}) do
+    attrs = %{organization_id: state.organization_id}
+
+    case Repo.fetch_by(
+           Tag,
+           %{shortcode: "numeric", organization_id: state.organization_id}
+         ) do
       {:ok, tag} -> Map.put(state, :numeric_tag_id, tag.id)
       _ -> state
     end
     |> Map.merge(%{
-      keyword_map: Taggers.Keyword.get_keyword_map(),
-      status_map: Status.get_status_map()
+      keyword_map: Taggers.Keyword.get_keyword_map(attrs),
+      status_map: Status.get_status_map(attrs)
     })
   end
 
@@ -74,7 +77,7 @@ defmodule Glific.Processor.ConsumerTagger do
 
   @doc false
   def handle_events(messages, _from, state) do
-    _ = Enum.map(messages, &process_message(&1, state))
+    Enum.each(messages, &process_message(&1, state))
 
     {:noreply, [], state}
   end
@@ -83,108 +86,83 @@ defmodule Glific.Processor.ConsumerTagger do
   defp process_message(message, state) do
     body = Glific.string_clean(message.body)
 
-    message
-    |> numeric_tagger(body, state)
-    |> keyword_tagger(body, state)
-    # we do this before, so it will not pick up the potential flow
-    # started by new contact tagger
-    |> check_flows(body, state)
-    |> new_contact_tagger(state)
+    {message, Map.put(state, :tagged, false)}
+    |> numeric_tagger(body)
+    |> keyword_tagger(body)
+    |> dialogflow_tagger()
+    |> new_contact_tagger()
+    # get the first element which is the message
+    |> elem(0)
     |> Repo.preload(:tags)
-    |> Communications.publish_data(:created_message_tag)
   end
 
-  @spec check_flows(atom() | Message.t(), String.t(), map()) :: Message.t()
-  defp check_flows(message, body, _state)
-       when body in [
-              "help",
-              "language",
-              "preference",
-              "newcontact",
-              "registration",
-              "timed",
-              "solworkflow"
-            ] do
-    message = Repo.preload(message, :contact)
-    {:ok, flow} = Flows.get_cached_flow(body, %{shortcode: body})
-    FlowContext.init_context(flow, message.contact)
-    message
-  end
-
-  defp check_flows(message, _body, _state) do
-    context = FlowContext.active_context(message.contact_id)
-
-    if context do
-      {:ok, flow} = Flows.get_cached_flow(context.flow_uuid, %{uuid: context.flow_uuid})
-
-      context
-      |> FlowContext.load_context(flow)
-      |> FlowContext.step_forward(message.body)
-    end
-
-    # we can potentially save the {contact_id, context} map here in the flow state,
-    # to avoid hitting the DB again. We'll do this after we get this working
-    message
-  end
-
-  @spec numeric_tagger(atom() | Message.t(), String.t(), map()) :: Message.t()
-  defp numeric_tagger(message, body, state) do
+  @spec numeric_tagger({atom() | Message.t(), map()}, String.t()) :: {Message.t(), map()}
+  defp numeric_tagger({message, state}, body) do
     case Numeric.tag_body(body, state.numeric_map) do
-      {:ok, value} -> Helper.add_tag(message, state.numeric_tag_id, value)
-      _ -> message
+      {:ok, value} ->
+        {
+          Helper.add_tag(message, state.numeric_tag_id, value),
+          Map.put(state, :tagged, true)
+        }
+
+      _ ->
+        {message, state}
     end
   end
 
-  @spec keyword_tagger(atom() | Message.t(), String.t(), map()) :: Message.t()
-  defp keyword_tagger(message, body, state) do
+  @spec keyword_tagger({atom() | Message.t(), map()}, String.t()) :: {Message.t(), map()}
+  defp keyword_tagger({message, state}, body) do
     case Taggers.Keyword.tag_body(body, state.keyword_map) do
-      {:ok, value} -> Helper.add_tag(message, value, body)
-      _ -> message
+      {:ok, value} ->
+        {
+          Helper.add_tag(message, value, body),
+          Map.put(state, :tagged, true)
+        }
+
+      _ ->
+        {message, state}
     end
   end
 
-  @spec new_contact_tagger(Message.t(), map()) :: Message.t()
-  defp new_contact_tagger(message, state) do
+  @spec new_contact_tagger({atom() | Message.t(), map()}) :: {Message.t(), map()}
+  defp new_contact_tagger({message, state}) do
     if Status.is_new_contact(message.sender_id) do
       message
-      |> add_status_tag("New Contact", state)
-      |> check_flows("newcontact", state)
-    end
+      |> add_status_tag("newcontact", state)
+      # We make a cross module function call which is its own genserver
+      # but should be fine for now
+      |> ConsumerFlow.check_flows("newcontact", state)
 
-    message
+      {message, Map.put(state, :tagged, true)}
+    else
+      {message, state}
+    end
   end
+
+  @spec dialogflow_tagger({Message.t(), map()}) :: {Message.t(), map()}
+  # dialog flow only accepts messages less than 255 characters for intent
+  defp dialogflow_tagger({%{body: body} = message, %{tagged: false} = state})
+       when byte_size(body) > 255,
+       do: {message, state}
+
+  defp dialogflow_tagger({message, %{tagged: false} = state}) do
+    # Since conatct and language are the required filed, we can skip some pattern checks.
+    message = Repo.preload(message, contact: [:language])
+
+    {:ok, response} =
+      Sessions.detect_intent(
+        message.body,
+        state.dialogflow_session_id,
+        message.contact.language.locale
+      )
+
+    Helper.add_dialogflow_tag(message, response["queryResult"])
+    {message, state}
+  end
+
+  defp dialogflow_tagger({message, state}), do: {message, state}
 
   @spec add_status_tag(Message.t(), String.t(), map()) :: Message.t()
   defp add_status_tag(message, status, state),
     do: Helper.add_tag(message, state.status_map[status])
-
-  @doc """
-  This callback handles the nudges in the system. It processes the jobs and then sets a timer to invoke itself when
-  done
-  """
-  def handle_info(:wakeup_timeout, state) do
-    # check DB and process all flows that need to be woken update_in
-    _ =
-      FlowContext.wakeup()
-      |> Enum.map(fn fc -> wakeup(fc, state) end)
-
-    Process.send_after(self(), :wakeup_timeout, @wakeup_timeout_ms)
-    {:noreply, [], state}
-  end
-
-  # Process one context at a time
-  @spec wakeup(FlowContext.t(), map()) ::
-          {:ok, FlowContext.t() | nil, [String.t()]} | {:error, String.t()}
-  defp wakeup(context, _state) do
-    {:ok, flow} = Flows.get_cached_flow(context.flow_uuid, %{uuid: context.flow_uuid})
-
-    {:ok, context} =
-      context
-      |> FlowContext.load_context(flow)
-      |> FlowContext.step_forward("No Response")
-
-    # update the context woken up time
-    {:ok, context} = FlowContext.update_flow_context(context, %{wakeup_at: nil})
-    {:ok, context, []}
-  end
 end

@@ -20,10 +20,19 @@ defmodule GlificWeb.Schema.ContactTypes do
     field :phone, :string
 
     field :status, :contact_status_enum
-    field :provider_status, :contact_status_enum
+    field :provider_status, :contact_provider_status_enum
 
     field :optin_time, :datetime
     field :optout_time, :datetime
+
+    field :fields, :json
+    field :settings, :json
+
+    field :last_message_at, :datetime
+
+    field :language, :language do
+      resolve(dataloader(Repo))
+    end
 
     field :tags, list_of(:tag) do
       resolve(dataloader(Repo))
@@ -49,14 +58,40 @@ defmodule GlificWeb.Schema.ContactTypes do
 
     @desc "Match the status"
     field :status, :contact_status_enum
-    field :provider_status, :contact_status_enum
+
+    @desc "Match the provider status"
+    field :provider_status, :contact_provider_status_enum
+
+    @desc "Include contacts with these tags"
+    field :include_tags, list_of(:id)
+
+    @desc "Include contacts with in these groups"
+    field :include_groups, list_of(:id)
+  end
+
+  @desc "Filtering options for search contacts"
+  input_object :search_contacts_filter do
+    @desc "Match the name"
+    field :name, :string
+
+    @desc "Match the phone"
+    field :phone, :string
+
+    @desc "Include contacts with these tags"
+    field :include_tags, list_of(:id)
+
+    @desc "Include contacts with in these groups"
+    field :include_groups, list_of(:id)
   end
 
   input_object :contact_input do
     field :name, :string
     field :phone, :string
     field :status, :contact_status_enum
-    field :provider_status, :contact_status_enum
+    field :provider_status, :contact_provider_status_enum
+    field :language_id, :id
+    field :fields, :json
+    field :settings, :json
   end
 
   object :contact_queries do

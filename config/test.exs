@@ -16,6 +16,7 @@ config :glific, Glific.Repo,
 # you can enable the server option below.
 config :glific, GlificWeb.Endpoint,
   http: [port: 4002],
+  url: [host: "glific.test"],
   server: false
 
 # Print only warnings and errors during test
@@ -43,3 +44,7 @@ config :pow, Pow.Ecto.Schema.Password, iterations: 1
 config :glific,
   provider_url: "https://api.gupshup.io/sm/api/v1",
   provider_key: "abcdefghigklmnop"
+
+config :appsignal, :config,
+  active: false,
+  env: :test

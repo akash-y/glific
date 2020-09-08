@@ -17,14 +17,15 @@ defmodule Glific.Users do
 
   """
   @spec list_users(map()) :: [User.t()]
-  def list_users(args \\ %{}),
-    do: Repo.list_filter(args, User, &Repo.opts_with_name/2, &Repo.filter_with/2)
+  def list_users(%{filter: %{organization_id: _organization_id}} = args) do
+    Repo.list_filter(args, User, &Repo.opts_with_name/2, &Repo.filter_with/2)
+  end
 
   @doc """
   Return the count of users, using the same filter as list_users
   """
   @spec count_users(map()) :: integer
-  def count_users(args \\ %{}),
+  def count_users(%{filter: %{organization_id: _organization_id}} = args),
     do: Repo.count_filter(args, User, &Repo.filter_with/2)
 
   @doc """
@@ -56,8 +57,8 @@ defmodule Glific.Users do
       {:error, %Ecto.Changeset{}}
 
   """
-  @spec create_user(map()) :: %User{}
-  def create_user(attrs \\ %{}) do
+  @spec create_user(map()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
+  def create_user(attrs) do
     %User{}
     |> User.changeset(attrs)
     |> Repo.insert()
@@ -77,24 +78,9 @@ defmodule Glific.Users do
   """
   @spec update_user(User.t(), map()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
   def update_user(%User{} = user, attrs) do
-    with false <- is_nil(attrs[:password]) || is_nil(attrs[:otp]),
-         :ok <- PasswordlessAuth.verify_code(user.phone, attrs.otp) do
-      PasswordlessAuth.remove_code(user.phone)
-      attrs = Map.merge(attrs, %{password_confirmation: attrs.password})
-
-      user
-      |> User.update_fields_changeset(attrs)
-      |> User.reset_password_changeset(attrs)
-      |> Repo.update()
-    else
-      true ->
-        user
-        |> User.update_fields_changeset(attrs)
-        |> Repo.update()
-
-      {:error, error} ->
-        {:error, Atom.to_string(error)}
-    end
+    user
+    |> User.update_fields_changeset(attrs)
+    |> Repo.update()
   end
 
   @doc """
@@ -120,7 +106,7 @@ defmodule Glific.Users do
   @spec reset_user_password(User.t(), map()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
   def reset_user_password(%User{} = user, attrs) do
     user
-    |> User.reset_password_changeset(attrs)
+    |> User.update_fields_changeset(attrs)
     |> Repo.update()
   end
 end

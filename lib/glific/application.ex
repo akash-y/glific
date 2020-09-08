@@ -11,16 +11,18 @@ defmodule Glific.Application do
     children = [
       # Start the Ecto repository
       {Glific.Repo, config.db}
+
       # Start the Telemetry supervisor
       GlificWeb.Telemetry,
+
       # Start the PubSub system
       {Phoenix.PubSub, name: Glific.PubSub},
+
       # Start the Endpoint (http/https)
       {GlificWeb.Endpoint, config.web},
 
       # Start Mnesia to be used for pow cache store
       Pow.Store.Backend.MnesiaCache,
-
       # Add Oban to process jobs
       {Oban, oban_config()},
 
@@ -36,13 +38,22 @@ defmodule Glific.Application do
 
     glific_children = [
       Glific.Processor.Producer,
-      Glific.Processor.ConsumerTagger
+      Glific.Processor.ConsumerTagger,
+      Glific.Processor.ConsumerFlow
     ]
 
     children =
       if Application.get_env(:glific, :environment) == :test,
         do: children,
         else: children ++ glific_children
+
+    # Add this :telemetry.attach/4 call:
+    :telemetry.attach(
+      "appsignal-ecto",
+      [:glific, :repo, :query],
+      &Appsignal.Ecto.handle_event/4,
+      nil
+    )
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

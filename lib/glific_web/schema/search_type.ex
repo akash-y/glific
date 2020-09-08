@@ -22,9 +22,18 @@ defmodule GlificWeb.Schema.SearchTypes do
     # this is an expensive operation
     field :count, :integer do
       resolve(fn saved_search, resolution, context ->
-        Resolvers.Searches.saved_search_count(resolution, %{id: saved_search.id}, context)
+        Resolvers.Searches.saved_search_count(
+          resolution,
+          %{id: saved_search.id},
+          context
+        )
       end)
     end
+  end
+
+  object :conversation do
+    field :contact, :contact
+    field :messages, list_of(:message)
   end
 
   input_object :saved_search_filter do
@@ -38,13 +47,44 @@ defmodule GlificWeb.Schema.SearchTypes do
     field :args, :json
   end
 
+  input_object :save_search_input do
+    field :label, :string
+    field :shortcode, :string
+  end
+
+  input_object :date_range_input do
+    @desc "Start date for the filter"
+    field :from, :date
+
+    @desc "End date for the filter"
+    field :to, :date
+  end
+
   @desc "Filtering options for search"
   input_object :search_filter do
+    @desc "Match one contact ID"
+    field :id, :gid
+
+    @desc "Match multiple contact ids"
+    field :ids, list_of(:gid)
+
     @desc "Include conversations with these tags"
     field :include_tags, list_of(:gid)
 
-    @desc "Exclude conversations with these tags"
-    field :exclude_tags, list_of(:gid)
+    @desc "Include conversations with these groups"
+    field :include_groups, list_of(:gid)
+
+    @desc "Include conversations by these users"
+    field :include_users, list_of(:gid)
+
+    @desc "term for saving the search"
+    field :term, :string
+
+    @desc "term for saving the search"
+    field :date_range, :date_range_input
+
+    @desc "It will use the save search filters"
+    field :saved_search_id, :id
   end
 
   object :search_queries do
@@ -52,12 +92,10 @@ defmodule GlificWeb.Schema.SearchTypes do
     field :search, list_of(:conversation) do
       arg(:save_search, :boolean, default_value: false)
 
-      @desc "A label and shortcode for saved search object"
-      arg(:save_search_label, :string)
-      arg(:save_search_shortcode, :string)
+      @desc "Inputs to save a search"
+      arg(:save_search_input, :save_search_input)
 
-      arg(:term, non_null(:string))
-      arg(:filter, :search_filter)
+      arg(:filter, non_null(:search_filter))
       arg(:message_opts, non_null(:opts))
       arg(:contact_opts, non_null(:opts))
       resolve(&Resolvers.Searches.search/3)
@@ -76,6 +114,12 @@ defmodule GlificWeb.Schema.SearchTypes do
       resolve(&Resolvers.Searches.saved_searches/3)
     end
 
+    @desc "Get a count of all searches"
+    field :count_saved_searches, :integer do
+      arg(:filter, :saved_search_filter)
+      resolve(&Resolvers.Searches.count_saved_searches/3)
+    end
+
     field :saved_search_count, :integer do
       # the id of the saved search
       arg(:id, non_null(:id))
@@ -84,17 +128,6 @@ defmodule GlificWeb.Schema.SearchTypes do
       arg(:term, :string)
 
       resolve(&Resolvers.Searches.saved_search_count/3)
-    end
-
-    @desc "Convenience function to run a search for a specific saved search id"
-    field :saved_search_execute, list_of(:conversation) do
-      # the id of the saved search
-      arg(:id, non_null(:id))
-
-      # if we want to add a search term
-      arg(:term, :string)
-
-      resolve(&Resolvers.Searches.saved_search_execute/3)
     end
   end
 

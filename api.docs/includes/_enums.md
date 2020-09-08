@@ -26,6 +26,39 @@ The Contact Status enum
 <td valign="top"><strong>VALID</strong></td>
 <td></td>
 </tr>
+<tr>
+<td valign="top"><strong>BLOCKED</strong></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+
+### ContactProviderStatusEnum
+
+The Contact Provider Status enum
+
+<table>
+<thead>
+<th align="left">Value</th>
+<th align="left">Description</th>
+</thead>
+<tbody>
+<tr>
+<td valign="top"><strong>NONE</strong></td>
+<td></td>
+</tr>
+<tr>
+<td valign="top"><strong>SESSION</strong></td>
+<td></td>
+</tr>
+<tr>
+<td valign="top"><strong>SESSION_AND_HSM</strong></td>
+<td></td>
+</tr>
+<tr>
+<td valign="top"><strong>HSM</strong></td>
+<td></td>
+</tr>
 </tbody>
 </table>
 

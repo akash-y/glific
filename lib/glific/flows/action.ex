@@ -8,6 +8,8 @@ defmodule Glific.Flows.Action do
   use Ecto.Schema
 
   alias Glific.Flows
+  alias Glific.Groups
+  alias Glific.Tags
 
   alias Glific.Flows.{
     ContactAction,
@@ -29,6 +31,8 @@ defmodule Glific.Flows.Action do
   @required_fields_set_contact_name [:name | @required_field_common]
   @required_fields_webook [:url, :headers, :method, :result_name | @required_field_common]
   @required_fields [:text | @required_field_common]
+  @required_fields_label [:labels | @required_field_common]
+  @required_fields_group [:groups | @required_field_common]
 
   @type t() :: %__MODULE__{
           uuid: Ecto.UUID.t() | nil,
@@ -44,6 +48,9 @@ defmodule Glific.Flows.Action do
           field: map() | nil,
           quick_replies: [String.t()],
           enter_flow_uuid: Ecto.UUID.t() | nil,
+          attachments: list() | nil,
+          labels: list() | nil,
+          groups: list() | nil,
           enter_flow: Flow.t() | nil,
           node_uuid: Ecto.UUID.t() | nil,
           node: Node.t() | nil,
@@ -70,6 +77,11 @@ defmodule Glific.Flows.Action do
     field :type, :string
 
     field :quick_replies, {:array, :string}, default: []
+
+    field :attachments, :map
+
+    field :labels, :map
+    field :groups, :map
 
     field :node_uuid, Ecto.UUID
     embeds_one :node, Node
@@ -138,13 +150,24 @@ defmodule Glific.Flows.Action do
     })
   end
 
+  def process(%{"type" => "add_input_labels"} = json, uuid_map, node) do
+    Flows.check_required_fields(json, @required_fields_label)
+    process(json, uuid_map, node, %{labels: json["labels"]})
+  end
+
+  def process(%{"type" => "add_contact_groups"} = json, uuid_map, node) do
+    Flows.check_required_fields(json, @required_fields_group)
+    process(json, uuid_map, node, %{groups: json["groups"]})
+  end
+
   def process(json, uuid_map, node) do
     Flows.check_required_fields(json, @required_fields)
 
     attrs = %{
       name: json["name"],
       text: json["text"],
-      quick_replies: json["quick_replies"]
+      quick_replies: json["quick_replies"],
+      attachments: process_attachments(json["attachments"])
     }
 
     {templating, uuid_map} = Templating.process(json["templating"], uuid_map)
@@ -160,8 +183,7 @@ defmodule Glific.Flows.Action do
   @spec execute(Action.t(), FlowContext.t(), [String.t()]) ::
           {:ok, FlowContext.t(), [String.t()]} | {:error, String.t()}
   def execute(%{type: "send_msg"} = action, context, message_stream) do
-    context = ContactAction.send_message(context, action)
-    {:ok, context, message_stream}
+    ContactAction.send_message(context, action, message_stream)
   end
 
   def execute(%{type: "set_contact_language"} = action, context, message_stream) do
@@ -223,6 +245,52 @@ defmodule Glific.Flows.Action do
     end
   end
 
+  def execute(%{type: "add_input_labels"} = action, context, message_stream) do
+    ## We will soon figure out how we will manage the UUID with tags
+    _list =
+      Enum.reduce(
+        action.labels,
+        [],
+        fn label, _acc ->
+          {:ok, tag_id} = Glific.parse_maybe_integer(label["uuid"])
+          Tags.create_contact_tag(%{contact_id: context.contact_id, tag_id: tag_id})
+        end
+      )
+
+    {:ok, context, message_stream}
+  end
+
+  def execute(%{type: "add_contact_groups"} = action, context, message_stream) do
+    ## We will soon figure out how we will manage the UUID with tags
+    _list =
+      Enum.reduce(
+        action.groups,
+        [],
+        fn group, _acc ->
+          {:ok, group_id} = Glific.parse_maybe_integer(group["uuid"])
+          Groups.create_contact_group(%{contact_id: context.contact_id, group_id: group_id})
+          {:ok, group_id}
+        end
+      )
+
+    {:ok, context, message_stream}
+  end
+
   def execute(action, _context, _message_stream),
     do: raise(UndefinedFunctionError, message: "Unsupported action type #{action.type}")
+
+  # let's format attachment and add as a map
+  @spec process_attachments(list()) :: map()
+  defp process_attachments(nil), do: %{}
+
+  defp process_attachments(attachment_list) do
+    attachment_list
+    |> Enum.map(fn attchement ->
+      case String.split(attchement, ":", parts: 2) do
+        [type, url] -> {type, url}
+        _ -> {nil, nil}
+      end
+    end)
+    |> Map.new()
+  end
 end

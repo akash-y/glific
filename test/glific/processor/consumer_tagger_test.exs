@@ -4,22 +4,24 @@ defmodule TestProducer do
   alias Glific.{
     Fixtures,
     Processor.ConsumerTagger,
-    Repo,
-    Tags
+    Repo
   }
 
   @checks %{
-    0 => {"shunya", "Numeric", "0"},
-    1 => {"12", "Numeric", "12"},
-    2 => {"hindi", "Language", nil},
-    3 => {"english", "Language", nil},
-    4 => {"hello", "Greeting", nil},
-    5 => {"bye", "Good Bye", nil},
-    6 => {"thanks", "Thank You", nil},
-    7 => {"ek", "Numeric", "1"},
-    8 => {"हिंदी", "Language", nil},
-    9 => {to_string(['\u0039', 65_039, 8419]), "Numeric", "9"}
+    0 => {"shunya", "numeric", "0"},
+    1 => {"12", "numeric", "12"},
+    2 => {"hindi", "language", nil},
+    3 => {"english", "language", nil},
+    4 => {"hello", "greeting", nil},
+    5 => {"bye", "goodbye", nil},
+    6 => {"thanks", "thankyou", nil},
+    7 => {"ek", "numeric", "1"},
+    8 => {"हिंदी", "language", nil},
+    9 => {to_string(['\u0039', 65_039, 8419]), "numeric", "9"},
+    10 => {"hey there", "greeting", nil}
   }
+
+  @checks_size Enum.count(@checks)
 
   @doc false
   @spec get_checks() :: %{integer => {}}
@@ -31,7 +33,7 @@ defmodule TestProducer do
 
   def init(demand), do: {:producer, demand}
 
-  def handle_demand(demand, counter) when counter > 10 do
+  def handle_demand(demand, counter) when counter > @checks_size + 1 do
     send(:test, {:called_back})
     {:stop, :normal, demand}
   end
@@ -40,7 +42,7 @@ defmodule TestProducer do
     events =
       Enum.map(
         counter..(counter + demand - 1),
-        fn c -> Fixtures.message_fixture(%{body: elem(@checks[rem(c, 10)], 0)}) end
+        fn c -> Fixtures.message_fixture(%{body: elem(@checks[rem(c, @checks_size)], 0)}) end
       )
 
     {:noreply, events, demand + counter}
@@ -54,7 +56,6 @@ defmodule Glific.Processor.ConsumerTaggerTest do
     Processor.ConsumerTagger,
     Repo,
     Seeds.SeedsDev,
-    Tags,
     Tags.MessageTag
   }
 
@@ -67,7 +68,9 @@ defmodule Glific.Processor.ConsumerTaggerTest do
     :ok
   end
 
-  test "should behave like consumer" do
+  @tag :pending
+  test "should behave like consumer",
+       %{organization_id: organization_id} do
     {:ok, producer} = TestProducer.start_link(1)
     {:ok, _consumer} = ConsumerTagger.start_link(producer: producer, name: TestConsumerTagger)
 
@@ -78,8 +81,15 @@ defmodule Glific.Processor.ConsumerTaggerTest do
     assert Repo.aggregate(MessageTag, :count) > 0
 
     # check the message tags
-    tags = ["Language", "Unread", "Greeting", "Thank You", "Numeric", "Good Bye"]
-    tag_ids = Tags.tags_map(tags)
+    tags = ["language", "unread", "greeting", "thankyou", "numeric", "goodbye"]
+
+    tag_ids =
+      Repo.label_id_map(
+        Tag,
+        tags,
+        organization_id,
+        :shortcode
+      )
 
     Enum.map(
       TestProducer.get_checks(),

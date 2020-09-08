@@ -4,10 +4,12 @@ defmodule Glific.Flows.MessageVarParserTest do
   alias Glific.Contacts
   alias Glific.Flows.MessageVarParser
 
-  test "parse/2 will parse the string with variable" do
+  test "parse/2 will parse the string with variable", attrs do
     # binding with 1 dots will replace the variable
     parsed_test =
       MessageVarParser.parse("hello @contact.name", %{"contact" => %{"name" => "Glific"}})
+
+    MessageVarParser.parse("hello @organization.name", %{"organization" => %{"name" => "Glific"}})
 
     assert parsed_test == "hello Glific"
 
@@ -32,9 +34,37 @@ defmodule Glific.Flows.MessageVarParserTest do
 
     assert parsed_test == "hello Glific"
 
-    [contact | _tail] = Contacts.list_contacts()
+    [contact | _tail] = Contacts.list_contacts(%{filter: attrs})
     contact = Map.from_struct(contact)
     parsed_test = MessageVarParser.parse("hello @contact.name", %{"contact" => contact})
     assert parsed_test == "hello #{contact.name}"
+
+    [contact | _tail] = Contacts.list_contacts(%{filter: attrs})
+
+    {:ok, contact} =
+      Contacts.update_contact(contact, %{
+        fields: %{
+          "name" => %{
+            "type" => "string",
+            "value" => "Glific Contact",
+            "inserted_at" => "2020-08-04"
+          },
+          "age" => %{
+            "type" => "string",
+            "value" => "20",
+            "inserted_at" => "2020-08-04"
+          }
+        }
+      })
+
+    contact = Map.from_struct(contact)
+
+    parsed_test =
+      MessageVarParser.parse(
+        "hello @contact.fields.name, your age is @contact.fields.age years.",
+        %{"contact" => contact}
+      )
+
+    assert parsed_test == "hello Glific Contact, your age is 20 years."
   end
 end

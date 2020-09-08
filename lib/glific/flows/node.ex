@@ -13,6 +13,7 @@ defmodule Glific.Flows.Node do
     Exit,
     Flow,
     FlowContext,
+    FlowCount,
     Router
   }
 
@@ -89,6 +90,13 @@ defmodule Glific.Flows.Node do
   @spec execute(Node.t(), FlowContext.t(), [String.t()]) ::
           {:ok | :wait, FlowContext.t(), [String.t()]} | {:error, String.t()}
   def execute(node, context, message_stream) do
+    # update the flow count
+    FlowCount.upsert_flow_count(%{
+      uuid: node.uuid,
+      flow_uuid: node.flow_uuid,
+      type: "node"
+    })
+
     # if node has an action, execute the first action
     cond do
       # if both are non-empty, it means that we have either a
@@ -98,7 +106,7 @@ defmodule Glific.Flows.Node do
         # need a better way to figure out if we should handle router or action
         # this is a hack for now
         if message_stream != [] and
-             hd(message_stream) in ["completed", "expired", "Success", "Failure"],
+             String.downcase(hd(message_stream)) in ["completed", "expired", "success", "failure"],
            do: Router.execute(node.router, context, message_stream),
            else: Action.execute(hd(node.actions), context, message_stream)
 

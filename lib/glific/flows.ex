@@ -4,11 +4,17 @@ defmodule Glific.Flows do
   """
 
   import Ecto.Query, warn: false
-  alias Glific.Repo
 
-  alias Glific.Caches
-  alias Glific.Flows.Flow
-  alias Glific.Flows.FlowRevision
+  alias Glific.{
+    Caches,
+    Contacts,
+    Contacts.Contact,
+    Flows.Flow,
+    Flows.FlowContext,
+    Flows.FlowRevision,
+    Groups.Group,
+    Repo
+  }
 
   @doc """
   Returns the list of flows.
@@ -20,14 +26,28 @@ defmodule Glific.Flows do
 
   """
   @spec list_flows(map()) :: [Flow.t()]
-  def list_flows(args \\ %{}),
-    do: Repo.list_filter(args, Flow, &Repo.opts_with_name/2, &Repo.filter_with/2)
+  def list_flows(%{filter: %{organization_id: _organization_id}} = args),
+    do: Repo.list_filter(args, Flow, &Repo.opts_with_name/2, &filter_with/2)
+
+  @spec filter_with(Ecto.Queryable.t(), %{optional(atom()) => any}) :: Ecto.Queryable.t()
+  defp filter_with(query, filter) do
+    query = Repo.filter_with(query, filter)
+
+    Enum.reduce(filter, query, fn
+      {:keyword, keyword}, query ->
+        from f in query,
+          where: ^keyword in f.keywords
+
+      _, query ->
+        query
+    end)
+  end
 
   @doc """
   Return the count of tags, using the same filter as list_tags
   """
   @spec count_flows(map()) :: integer
-  def count_flows(args \\ %{}),
+  def count_flows(%{filter: %{organization_id: _organization_id}} = args),
     do: Repo.count_filter(args, Flow, &Repo.filter_with/2)
 
   @doc """
@@ -154,7 +174,7 @@ defmodule Glific.Flows do
         end
       )
 
-    %{results: Enum.sort(asset_list) |> Enum.reverse()}
+    %{results: asset_list |> Enum.reverse()}
   end
 
   @doc """
@@ -186,7 +206,6 @@ defmodule Glific.Flows do
       |> FlowRevision.changeset(%{definition: definition, flow_id: flow.id})
       |> Repo.insert()
 
-    update_cached_flow(flow.uuid)
     revision
   end
 
@@ -234,25 +253,105 @@ defmodule Glific.Flows do
   end
 
   @doc """
-    A helper function to intract with the Caching API and get the cached flow.
-    It will also set the loaded flow to cache in case it does not exists.
+  A helper function to interact with the Caching API and get the cached flow.
+  It will also set the loaded flow to cache in case it does not exists.
   """
-
   @spec get_cached_flow(any, any) :: {atom, any}
   def get_cached_flow(key, args) do
     with {:ok, false} <- Caches.get(key) do
       flow = Flow.get_loaded_flow(args)
-      Caches.set([flow.uuid, flow.shortcode], flow)
+      Caches.set([flow.uuid | flow.keywords], flow)
     end
   end
 
   @doc """
-    Remove the flow from cache and add a new one.
+  Update the cached flow from db. This typically happens when the flow definition is updated
+  via the UI
   """
   @spec update_cached_flow(Flow.t()) :: {atom, any}
   def update_cached_flow(flow_uuid) do
     flow = Flow.get_loaded_flow(%{uuid: flow_uuid})
     Caches.remove([flow.uuid, flow.shortcode])
     Caches.set([flow.uuid, flow.shortcode], flow)
+  end
+
+  @doc """
+  Check if a flow has been activated since the time sent as a parameter
+  e.g. outofoffice will check if that flow was activated in the last 24 hours
+  daily/weekly will check since start of day/week, etc
+  """
+  @spec flow_activated(non_neg_integer, non_neg_integer, DateTime.t()) :: boolean
+  def flow_activated(flow_id, contact_id, since) do
+    results =
+      FlowContext
+      |> where([fc], fc.flow_id == ^flow_id)
+      |> where([fc], fc.contact_id == ^contact_id)
+      |> where([fc], fc.inserted_at >= ^since)
+      |> Repo.all()
+
+    if results != [],
+      do: true,
+      else: false
+  end
+
+  @doc """
+  Update latest flow revision status as done
+  Reset old published flow revision status as draft
+  Update cached flow definition
+  """
+  @spec publish_flow(Flow.t()) :: {:ok, Flow.t()}
+  def publish_flow(%Flow{} = flow) do
+    with {:ok, old_published_revision} <-
+           Repo.fetch_by(FlowRevision, %{flow_id: flow.id, status: "done"}) do
+      {:ok, _} =
+        old_published_revision
+        |> FlowRevision.changeset(%{status: "draft"})
+        |> Repo.update()
+    end
+
+    with {:ok, latest_revision} <-
+           FlowRevision
+           |> Repo.fetch_by(%{flow_id: flow.id, revision_number: 0}) do
+      {:ok, _} =
+        latest_revision
+        |> FlowRevision.changeset(%{status: "done"})
+        |> Repo.update()
+
+      update_cached_flow(flow.uuid)
+    end
+
+    {:ok, flow}
+  end
+
+  @doc """
+  Start flow for a contact
+  """
+  @spec start_contact_flow(Flow.t(), Contact.t()) :: {:ok, Flow.t()} | {:error, String.t()}
+  def start_contact_flow(%Flow{} = flow, %Contact{} = contact) do
+    {:ok, flow} = get_cached_flow(flow.id, %{id: flow.id})
+
+    if Contacts.can_send_message_to?(contact),
+      do: process_contact_flow([contact], flow),
+      else: {:error, ["contact", "Cannot send the message to the contact."]}
+  end
+
+  @doc """
+  Start flow for contacts of a group
+  """
+  @spec start_group_flow(Flow.t(), Group.t()) :: {:ok, Flow.t()}
+  def start_group_flow(%Flow{} = flow, %Group{} = group) do
+    {:ok, flow} = get_cached_flow(flow.id, %{id: flow.id})
+    group = group |> Repo.preload([:contacts])
+    process_contact_flow(group.contacts, flow)
+  end
+
+  @spec process_contact_flow(list(), Flow.t()) :: {:ok, Flow.t()}
+  defp process_contact_flow(contacts, flow) do
+    _list =
+      Enum.map(contacts, fn contact ->
+        if Contacts.can_send_message_to?(contact), do: FlowContext.init_context(flow, contact)
+      end)
+
+    {:ok, flow}
   end
 end

@@ -7,7 +7,10 @@ defmodule Glific.Contacts do
   alias Glific.{
     Contacts.Contact,
     Contacts.Location,
-    Repo
+    Groups.ContactGroup,
+    Partners,
+    Repo,
+    Tags.ContactTag
   }
 
   @doc """
@@ -18,19 +21,23 @@ defmodule Glific.Contacts do
       iex> list_contacts()
       [%Contact{}, ...]
 
+  Get the list of contacts filtered by various search options
+  Include contacts only if within list of groups
+  Include contacts only if have list of tags
   """
   @spec list_contacts(map()) :: [Contact.t()]
-  def list_contacts(args \\ %{}),
+  def list_contacts(%{filter: %{organization_id: _organization_id}} = args),
     do: Repo.list_filter(args, Contact, &Repo.opts_with_name/2, &filter_with/2)
 
   @doc """
   Return the count of contacts, using the same filter as list_contacts
   """
   @spec count_contacts(map()) :: integer
-  def count_contacts(args \\ %{}),
-    do: Repo.count_filter(args, Contact, &filter_with/2)
+  def count_contacts(%{filter: %{organization_id: _organization_id}} = args) do
+    Repo.count_filter(args, Contact, &filter_with/2)
+  end
 
-  # codebeat:disable[ABC]
+  # codebeat:disable[ABC, LOC]
   @spec filter_with(Ecto.Queryable.t(), %{optional(atom()) => any}) :: Ecto.Queryable.t()
   defp filter_with(query, filter) do
     query = Repo.filter_with(query, filter)
@@ -42,12 +49,49 @@ defmodule Glific.Contacts do
       {:provider_status, provider_status}, query ->
         from q in query, where: q.provider_status == ^provider_status
 
+      {:include_groups, []}, query ->
+        query
+
+      # We need distinct query expression with join,
+      # in case if filter requires contacts added to multiple groups
+      # Using subquery instead of join, so that distict query expression can be avoided
+      # We can come back and decide, which one is more expensive in this scenario.
+      {:include_groups, group_ids}, query ->
+        sub_query =
+          ContactGroup
+          |> where([cg], cg.group_id in ^group_ids)
+          |> select([cg], cg.contact_id)
+
+        query
+        |> where([c], c.id in subquery(sub_query))
+
+      {:include_tags, []}, query ->
+        query
+
+      {:include_tags, tag_ids}, query ->
+        sub_query =
+          ContactTag
+          |> where([ct], ct.tag_id in ^tag_ids)
+          |> select([ct], ct.contact_id)
+
+        query
+        |> where([c], c.id in subquery(sub_query))
+
       _, query ->
         query
     end)
+    |> filter_contacts_with_blocked_status(filter)
   end
 
-  # codebeat:enable[ABC]
+  # codebeat:enable[ABC, LOC]
+
+  # Remove contacts with blocked status unless filtered by status
+  @spec filter_contacts_with_blocked_status(Ecto.Queryable.t(), %{optional(atom()) => any}) ::
+          Ecto.Queryable.t()
+  defp filter_contacts_with_blocked_status(query, %{status: _}), do: query
+
+  defp filter_contacts_with_blocked_status(query, _),
+    do: from(q in query, where: q.status != "blocked")
 
   @doc """
   Gets a single contact.
@@ -79,11 +123,13 @@ defmodule Glific.Contacts do
 
   """
   @spec create_contact(map()) :: {:ok, Contact.t()} | {:error, Ecto.Changeset.t()}
-  def create_contact(attrs \\ %{}) do
-    # Get the organization
-    organization = Glific.Partners.Organization |> Ecto.Query.first() |> Repo.one()
-
-    attrs = Map.put(attrs, :language_id, attrs[:language_id] || organization.default_language_id)
+  def create_contact(%{organization_id: organization_id} = attrs) do
+    attrs =
+      Map.put(
+        attrs,
+        :language_id,
+        attrs[:language_id] || Partners.organization_language_id(organization_id)
+      )
 
     %Contact{}
     |> Contact.changeset(attrs)
@@ -145,18 +191,20 @@ defmodule Glific.Contacts do
   it returns the existing contact, else it creates a new one
   """
   @spec upsert(map()) :: {:ok, Contact.t()}
-  def upsert(attrs) do
-    # Get the organization
-    organization = Glific.Partners.Organization |> Ecto.Query.first() |> Repo.one()
+  def upsert(%{organization_id: organization_id} = attrs) do
     # we keep this separate to avoid overwriting the language if already set by a contact
     # this will not appear in the set field of the on_conflict: clause below
-    language = Map.put(%{}, :language_id, attrs[:language_id] || organization.default_language_id)
+    other_attrs = %{
+      organization_id: organization_id,
+      language_id: attrs[:language_id] || Partners.organization_language_id(organization_id)
+    }
 
     contact =
       Repo.insert!(
-        change_contact(%Contact{}, Map.merge(language, attrs)),
+        change_contact(%Contact{}, Map.merge(other_attrs, attrs)),
+        returning: true,
         on_conflict: [set: Enum.map(attrs, fn {key, value} -> {key, value} end)],
-        conflict_target: :phone
+        conflict_target: [:phone, :organization_id]
       )
 
     {:ok, contact}
@@ -180,15 +228,16 @@ defmodule Glific.Contacts do
   @doc """
   Update DB fields when contact opted in
   """
-  @spec contact_opted_in(String.t(), DateTime.t()) :: {:ok}
-  def contact_opted_in(phone, utc_time) do
+  @spec contact_opted_in(String.t(), non_neg_integer, DateTime.t()) :: {:ok}
+  def contact_opted_in(phone, organization_id, utc_time) do
     upsert(%{
       phone: phone,
       optin_time: utc_time,
       last_message_at: utc_time,
       optout_time: nil,
       status: :valid,
-      provider_status: :valid,
+      provider_status: :session_and_hsm,
+      organization_id: organization_id,
       updated_at: DateTime.utc_now()
     })
 
@@ -198,14 +247,15 @@ defmodule Glific.Contacts do
   @doc """
   Update DB fields when contact opted out
   """
-  @spec contact_opted_out(String.t(), DateTime.t()) :: {:ok}
-  def contact_opted_out(phone, utc_time) do
+  @spec contact_opted_out(String.t(), non_neg_integer, DateTime.t()) :: {:ok}
+  def contact_opted_out(phone, organization_id, utc_time) do
     upsert(%{
       phone: phone,
       optout_time: utc_time,
       optin_time: nil,
       status: :invalid,
-      provider_status: :invalid,
+      provider_status: :none,
+      organization_id: organization_id,
       updated_at: DateTime.utc_now()
     })
 
@@ -221,9 +271,9 @@ defmodule Glific.Contacts do
 
   @doc false
   @spec can_send_message_to?(Contact.t(), boolean()) :: boolean()
-  def can_send_message_to?(contact, is_hsm) when is_hsm == true do
+  def can_send_message_to?(contact, true = _is_hsm) do
     with :valid <- contact.status,
-         :valid <- contact.provider_status,
+         true <- contact.provider_status in [:session_and_hsm, :hsm],
          true <- contact.optin_time != nil do
       true
     else
@@ -236,8 +286,8 @@ defmodule Glific.Contacts do
   """
   def can_send_message_to?(contact, _is_hsm) do
     with :valid <- contact.status,
-         :valid <- contact.provider_status,
-         true <- Timex.diff(DateTime.utc_now(), contact.last_message_at, :hours) < 24 do
+         true <- contact.provider_status in [:session_and_hsm, :session],
+         true <- Glific.in_past_time(contact.last_message_at, :hours, 24) do
       true
     else
       _ -> false
@@ -273,5 +323,56 @@ defmodule Glific.Contacts do
     %Location{}
     |> Location.changeset(attrs)
     |> Repo.insert()
+  end
+
+  @doc """
+  Invoked from cron jobs to mass update the status of contacts belonging to
+  a specific organization
+
+  In this case, if we can, we might want to do it across the entire DB since the
+  update is across all organizations. The main issue might be the row level security
+  of postgres and how it ties in. For now, lets stick to per organization
+  """
+  @spec update_contact_status(non_neg_integer, map()) :: :ok
+  def update_contact_status(organization_id, _args) do
+    t = Glific.go_back_time(24)
+
+    Contact
+    |> where([c], c.last_message_at <= ^t)
+    |> where([c], c.organization_id == ^organization_id)
+    |> select([c], c.id)
+    |> Repo.all()
+    |> set_session_status(:none)
+  end
+
+  @doc """
+  Set session status for opted in and opted out contacts
+  """
+  @spec set_session_status(Contact.t() | [non_neg_integer], atom()) ::
+          {:ok, Contact.t()} | {:error, Ecto.Changeset.t()} | :ok
+  def set_session_status(contact, :none = _status) when is_struct(contact) do
+    if is_nil(contact.optin_time),
+      do: update_contact(contact, %{provider_status: :none}),
+      else: update_contact(contact, %{provider_status: :hsm})
+  end
+
+  def set_session_status(contact_ids, :none = _status) when is_list(contact_ids) do
+    Contact
+    |> where([c], is_nil(c.optin_time))
+    |> where([c], c.id in ^contact_ids)
+    |> Repo.update_all(set: [provider_status: :none])
+
+    Contact
+    |> where([c], not is_nil(c.optin_time))
+    |> where([c], c.id in ^contact_ids)
+    |> Repo.update_all(set: [provider_status: :hsm])
+
+    :ok
+  end
+
+  def set_session_status(contact, :session = _status) do
+    if is_nil(contact.optin_time),
+      do: update_contact(contact, %{provider_status: :session}),
+      else: update_contact(contact, %{provider_status: :session_and_hsm})
   end
 end

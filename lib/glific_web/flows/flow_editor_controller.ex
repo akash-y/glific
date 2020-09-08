@@ -5,8 +5,12 @@ defmodule GlificWeb.Flows.FlowEditorController do
 
   use GlificWeb, :controller
 
-  alias Glific.Flows
-  alias Glific.Flows.Flow
+  alias Glific.{
+    Flows,
+    Flows.ContactField,
+    Flows.Flow,
+    Flows.FlowCount
+  }
 
   @doc false
   @spec globals(Plug.Conn.t(), map) :: Plug.Conn.t()
@@ -18,8 +22,14 @@ defmodule GlificWeb.Flows.FlowEditorController do
   @doc false
   @spec groups(Plug.Conn.t(), map) :: Plug.Conn.t()
   def groups(conn, _params) do
+    group_list =
+      Glific.Groups.list_groups(%{filter: %{organization_id: conn.assigns[:organization_id]}})
+      |> Enum.reduce([], fn group, acc ->
+        [%{uuid: "#{group.id}", name: group.label} | acc]
+      end)
+
     conn
-    |> json(%{results: []})
+    |> json(%{results: group_list})
   end
 
   @doc false
@@ -38,28 +48,41 @@ defmodule GlificWeb.Flows.FlowEditorController do
   @doc false
   @spec fields(Plug.Conn.t(), map) :: Plug.Conn.t()
   def fields(conn, _params) do
-    fileds = [
-      %{key: "name", name: "Name", value_type: "text"},
-      %{key: "age_group", name: "Age Group", value_type: "text"},
-      %{key: "gender", name: "Gender", value_type: "text"},
-      %{key: "dob", name: "Date of Birth", value_type: "text"},
-      %{key: "settings", name: "Settings", value_type: "text"}
-    ]
+    fields =
+      ContactField.list_contacts_fields(%{
+        filter: %{organization_id: conn.assigns[:organization_id]}
+      })
+      |> Enum.reduce([], fn cf, acc ->
+        [%{key: cf.shortcode, name: cf.name, value_type: cf.value_type} | acc]
+      end)
 
-    json(conn, %{results: fileds})
+    json(conn, %{results: fields})
   end
 
   @doc """
-    Add Contact fields into the database. The response should be a map with 3 keys
-    % { Key: Field name, name: Field display name value_type: type of the value}
+  Add Contact fields into the database. The response should be a map with 3 keys
+  % { Key: Field name, name: Field display name value_type: type of the value}
 
-    We are not supporting this for now. We will add that in future
+  We are not supporting this for now. We will add that in future
   """
 
-  @spec fields_post(Plug.Conn.t(), nil | maybe_improper_list | map) :: Plug.Conn.t()
-  def fields_post(conn, _params) do
+  @spec fields_post(Plug.Conn.t(), map) :: Plug.Conn.t()
+  def fields_post(conn, params) do
+    # need to store this into DB, the value_type will default to text in this case
+    # the shortcode is the name, lower cased, and camelized
+    {:ok, contact_field} =
+      ContactField.create_contact_field(%{
+        name: params["label"],
+        shortcode: Glific.string_clean(params["label"]),
+        organization_id: conn.assigns[:organization_id]
+      })
+
     conn
-    |> json(%{})
+    |> json(%{
+      key: contact_field.shortcode,
+      name: contact_field.name,
+      value_type: contact_field.value_type
+    })
   end
 
   @doc """
@@ -67,13 +90,18 @@ defmodule GlificWeb.Flows.FlowEditorController do
     We are not supporting this for now. To enable It should return a list of map having
     uuid and name as keys
     [%{uuid: tag.uuid, name: tag.label}]
-
-    We are not supporting them for now. We will come back to this in near future
-
   """
   @spec labels(Plug.Conn.t(), nil | maybe_improper_list | map) :: Plug.Conn.t()
   def labels(conn, _params) do
-    json(conn, %{results: []})
+    tag_list =
+      Glific.Tags.list_tags(%{
+        filter: %{parent: "Contacts", organization_id: conn.assigns[:organization_id]}
+      })
+      |> Enum.reduce([], fn tag, acc ->
+        [%{uuid: "#{tag.id}", name: tag.label} | acc]
+      end)
+
+    json(conn, %{results: tag_list})
   end
 
   @doc """
@@ -132,7 +160,6 @@ defmodule GlificWeb.Flows.FlowEditorController do
   @doc """
     We are not using this for now but this is required for flow editor config.
   """
-
   @spec resthooks(Plug.Conn.t(), nil | maybe_improper_list | map) :: Plug.Conn.t()
   def resthooks(conn, _params) do
     resthooks = %{results: []}
@@ -143,7 +170,9 @@ defmodule GlificWeb.Flows.FlowEditorController do
   @spec templates(Plug.Conn.t(), nil | maybe_improper_list | map) :: Plug.Conn.t()
   def templates(conn, _params) do
     results =
-      Glific.Templates.list_session_templates()
+      Glific.Templates.list_session_templates(%{
+        filter: %{organization_id: conn.assigns[:organization_id]}
+      })
       |> Enum.reduce([], fn template, acc ->
         template = Glific.Repo.preload(template, :language)
         language = template.language
@@ -177,7 +206,7 @@ defmodule GlificWeb.Flows.FlowEditorController do
     results =
       Glific.Settings.list_languages()
       |> Enum.reduce([], fn language, acc ->
-        [%{iso: language.locale, name: language.label} | acc]
+        [%{iso: language.label, name: language.label} | acc]
       end)
 
     json(conn, %{results: results})
@@ -214,25 +243,54 @@ defmodule GlificWeb.Flows.FlowEditorController do
     This is used to checking if the connection between frontend and backend is established or not.
   """
   @spec activity(Plug.Conn.t(), nil | maybe_improper_list | map) :: Plug.Conn.t()
-  def activity(conn, _params) do
-    activity = %{
-      nodes: %{},
-      segments: %{}
-    }
+  def activity(conn, params) do
+    {nodes, segments, recent_messages} =
+      FlowCount.get_flow_count_list(params["flow"])
+      |> Enum.reduce(
+        {%{}, %{}, %{}},
+        fn fc, acc ->
+          {nodes, segments, recent_messages} = acc
 
+          case fc.type do
+            "node" ->
+              {Map.put(nodes, fc.uuid, fc.count), segments, recent_messages}
+
+            "exit" ->
+              key = "#{fc.uuid}:#{fc.destination_uuid}"
+
+              {
+                nodes,
+                Map.put(segments, key, fc.count),
+                Map.put(recent_messages, key, get_recent_message(fc))
+              }
+
+            _ ->
+              acc
+          end
+        end
+      )
+
+    activity = %{nodes: nodes, segments: segments, recentMessages: recent_messages}
     json(conn, activity)
+  end
+
+  defp get_recent_message(flow_count) do
+    # flow editor shows only last 3 messages. We are just tacking 5 for the safe side.
+    flow_count.recent_messages
+    |> Enum.map(fn msg -> %{text: msg["message"], sent: msg["date"]} end)
+    |> Enum.take(5)
   end
 
   @doc """
     Let's get all the flows or a latest flow revision
   """
-
   @spec flows(Plug.Conn.t(), nil | maybe_improper_list | map) :: Plug.Conn.t()
   def flows(conn, %{"vars" => vars}) do
     results =
       case vars do
         [] ->
-          Flows.list_flows()
+          ## We need to fix this before merging this branch
+          Flows.list_flows(%{filter: %{organization_id: conn.assigns[:organization_id]}})
           |> Enum.reduce([], fn flow, acc ->
             [
               %{
@@ -249,7 +307,11 @@ defmodule GlificWeb.Flows.FlowEditorController do
           end)
 
         [flow_uuid] ->
-          with {:ok, flow} <- Glific.Repo.fetch_by(Flow, %{uuid: flow_uuid}),
+          with {:ok, flow} <-
+                 Glific.Repo.fetch_by(Flow, %{
+                   uuid: flow_uuid,
+                   organization_id: conn.assigns[:organization_id]
+                 }),
                do: Flow.get_latest_definition(flow.id)
       end
 

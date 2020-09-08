@@ -13,11 +13,9 @@
 Install the following packages using your favorite package manager. Links are provided for some
 
   * [Install Elixir](https://elixir-lang.org/install.html#distributions)
+    1. For Ubuntu users you also need to install the `inotify-tools` package
   * [Install Postgres](https://www.postgresql.org/download/)
-    1. For Postgres, for the development server, we default to using postgres/postgres as the username/password.
-  This is configurable
-    2. The db user needs to have **superuser status** on the database since we create a materialized view.
-  This might change in a future release to a table
+    1. For Postgres, for the development server, we default to using postgres/postgres as the username/password. This is configurable
 
 ## Download code
 
@@ -68,6 +66,10 @@ to update your codebase from the glicic repository.
   * Get the latest code from master: `git switch master; git pull`
   * Ensure you have not modified any files in this directory, by running: `git status`
   * Run the setup command: `mix setup`
+
+## Deploying release on ECS with CD
+1. If you are using AWS codebuild for CD, use buildspec.yml.sample file content for creating and pushing docker image.
+2. For using and alternative repository like docker hub, you just need to make some changes in the pre_build phase (REPOSITORY_URI and authentications), the rest of the phases will remains same.
 
 ## Documentation
 

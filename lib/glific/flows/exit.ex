@@ -9,10 +9,12 @@ defmodule Glific.Flows.Exit do
   alias Glific.{
     Flows,
     Flows.FlowContext,
-    Flows.Node
+    Flows.FlowCount,
+    Flows.Node,
+    Repo
   }
 
-  @required_fields [:uuid, :destination_uuid]
+  @required_fields [:uuid]
 
   @type t() :: %__MODULE__{
           uuid: Ecto.UUID.t() | nil,
@@ -54,6 +56,16 @@ defmodule Glific.Flows.Exit do
   @spec execute(Exit.t(), FlowContext.t(), [String.t()]) ::
           {:ok, FlowContext.t() | nil, [String.t()]} | {:error, String.t()}
   def execute(exit, context, message_stream) do
+    context = Repo.preload(context, :flow)
+    # update the flow count
+    FlowCount.upsert_flow_count(%{
+      uuid: exit.uuid,
+      destination_uuid: exit.destination_node_uuid,
+      flow_uuid: context.flow_uuid,
+      type: "exit",
+      recent_message: get_recent_messages(context.recent_inbound)
+    })
+
     if is_nil(exit.destination_node_uuid) do
       FlowContext.reset_context(context)
       {:ok, nil, []}
@@ -67,4 +79,11 @@ defmodule Glific.Flows.Exit do
       )
     end
   end
+
+  # get most recent message
+
+  @spec get_recent_messages(list()) :: map()
+  defp get_recent_messages(nil), do: %{}
+  defp get_recent_messages([]), do: %{}
+  defp get_recent_messages(recent_inbound), do: hd(recent_inbound)
 end

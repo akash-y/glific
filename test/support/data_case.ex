@@ -37,7 +37,8 @@ defmodule Glific.DataCase do
       Sandbox.mode(Repo, {:shared, self()})
     end
 
-    :ok
+    # %{organization_id: Fixtures.get_org_id()}
+    %{organization_id: 1}
   end
 
   @doc """

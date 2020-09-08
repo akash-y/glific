@@ -11,6 +11,7 @@ query flows($filter: FlowFilter, $opts: Opts) {
     shortcode
     versionNumber
     flowType
+    keywords
   }
 }
 
@@ -35,6 +36,10 @@ query flows($filter: FlowFilter, $opts: Opts) {
       {
         "flowType": "MESSAGE",
         "id": "1",
+        "keywords": [
+          "help",
+          "मदद"
+        ],
         "name": "Help Workflow",
         "shortcode": "help",
         "uuid": "3fa22108-f464-41e5-81d9-d8a298854429",
@@ -43,6 +48,9 @@ query flows($filter: FlowFilter, $opts: Opts) {
       {
         "flowType": "MESSAGE",
         "id": "2",
+        "keywords": [
+          "language"
+        ],
         "name": "Language Workflow",
         "shortcode": "language",
         "uuid": "f5f0c89e-d5f6-4610-babf-ca0f12cbfcbf",
@@ -140,6 +148,7 @@ mutation ($input: FlowInput!) {
       id
       name
       shortcode
+      keywords
     }
     errors {
       key
@@ -150,8 +159,12 @@ mutation ($input: FlowInput!) {
 
 {
   "input": {
+    "keywords": [
+      "tests",
+      "testing"
+    ],
     "name": "test workflow",
-    "shortcode": "test"
+    "shortcode": "test_workflow"
   }
 }
 ```
@@ -165,7 +178,12 @@ mutation ($input: FlowInput!) {
       "errors": null,
       "flow": {
         "id": "12",
-        "name": "test workflow"
+        "keywords": [
+          "tests",
+          "testing"
+        ],
+        "name": "test workflow",
+        "shortcode": "test_workflow"
       }
     }
   }
@@ -209,6 +227,7 @@ mutation updateFlow($id: ID!, $input:FlowInput!) {
     flow {
       id
       name
+      keywords
     }
     errors {
       key
@@ -220,7 +239,8 @@ mutation updateFlow($id: ID!, $input:FlowInput!) {
 {
   "id": "1",
   "input": {
-    "name": "updated name"
+    "name": "updated name",
+    "keywords": ["test", "testing"]
   }
 }
 ```
@@ -234,8 +254,30 @@ mutation updateFlow($id: ID!, $input:FlowInput!) {
       "errors": null,
       "flow": {
         "id": "1",
-        "name": "updated name"
+        "name": "updated name",
+        "keywords": [
+          "test",
+          "testing"
+        ]
       }
+    }
+  }
+}
+```
+
+In case of errors, above functions return an error object like the below
+
+```json
+{
+  "data": {
+    "updateFlow": {
+      "errors": [
+        {
+          "key": "keywords",
+          "message": "global keywords [test, testing] are already taken"
+        }
+      ],
+      "flow": null
     }
   }
 }
@@ -317,6 +359,191 @@ Type | Description
 --------- | ---- | ------- | -----------
 <a href="#flowresult">FlowResult</a> | An error object or empty
 
+## Publish a Flow
+
+```graphql
+mutation publishFlow($id: ID!) {
+  publishFlow(id: $id) {
+    success
+    errors {
+      key
+      message
+    }
+  }
+}
+
+{
+  "id": "3"
+}
+```
+
+> The above query returns JSON structured like this:
+
+```json
+{
+  "data": {
+    "publishFlow": {
+      "errors": null,
+      "success": true
+    }
+  }
+}
+```
+
+In case of errors, all the above functions return an error object like the below
+
+```json
+{
+  "data": {
+    "publishFlow": {
+      "errors": [
+        {
+          "key": "Elixir.Glific.Flows.Flow 3",
+          "message": "Resource not found"
+        }
+      ],
+      "success": null
+    }
+  }
+}
+```
+
+### Query Parameters
+
+Parameter | Type | Default | Description
+--------- | ---- | ------- | -----------
+id | <a href="#id">ID</a>! | required ||
+
+### Return Parameters
+Type | Description
+--------- | ---- | ------- | -----------
+<a href="#publishflowresult">PublishFlowResult</a> | An error object or response true
+
+## Start flow for a contact
+
+```graphql
+mutation startContactFlow($flowId: ID!, $contactId: ID!) {
+  startContactFlow(flowId: $flowId, contactId: $contactId) {
+  	success
+  	errors {
+    	key
+  		message
+  	}
+  }
+}
+
+{
+  "flowId": "1",
+  "contactId": "2"
+}
+```
+
+> The above query returns JSON structured like this:
+
+```json
+{
+  "data": {
+    "startContactFlow": {
+      "errors": null,
+      "success": true
+    }
+  }
+}
+```
+
+In case of errors, all the above functions return an error object like the below
+
+```json
+{
+  "data": {
+    "startContactFlow": {
+      "errors": [
+        {
+          "key": "contact",
+          "message": "Cannot send the message to the contact."
+        }
+      ],
+      "success": null
+    }
+  }
+}
+```
+
+### Query Parameters
+
+Parameter | Type | Default | Description
+--------- | ---- | ------- | -----------
+flowId | <a href="#id">ID</a>! | required ||
+contactId | <a href="#id">ID</a>! | required ||
+
+### Return Parameters
+Type | Description
+--------- | ---- | ------- | -----------
+<a href="#startflowresult">StartFlowResult</a> | An error object or success response true
+
+
+## Start flow for a group contacts
+
+```graphql
+mutation startGroupFlow($flowId: ID!, $groupId: ID!) {
+  startGroupFlow(flowId: $flowId, groupId: $groupId) {
+  	success
+  	errors {
+    	key
+  		message
+  	}
+  }
+}
+
+{
+  "flowId": "1",
+  "groupId": "1"
+}
+```
+
+> The above query returns JSON structured like this:
+
+```json
+{
+  "data": {
+    "startGroupFlow": {
+      "errors": null,
+      "success": true
+    }
+  }
+}
+```
+
+In case of errors, all the above functions return an error object like the below
+
+```json
+{
+  "data": {
+    "startGroupFlow": {
+      "errors": [
+        {
+          "key": "Elixir.Glific.Flows.Flow 11",
+          "message": "Resource not found"
+        }
+      ],
+      "success": null
+    }
+  }
+}
+```
+
+### Query Parameters
+
+Parameter | Type | Default | Description
+--------- | ---- | ------- | -----------
+flowId | <a href="#id">ID</a>! | required ||
+groupId | <a href="#id">ID</a>! | required ||
+
+### Return Parameters
+Type | Description
+--------- | ---- | ------- | -----------
+<a href="#startflowresult">StartFlowResult</a> | An error object or success response true
+
 ## Flow Objects
 
 ### Flow
@@ -361,6 +588,16 @@ Type | Description
 <td valign="top"><a href="#string">String</a></td>
 <td></td>
 </tr>
+<tr>
+<td colspan="2" valign="top"><strong>keywords</strong></td>
+<td valign="top">[<a href="#string">String</a>]</td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>ignoreKeywords</strong></td>
+<td valign="top"><a href="#boolean">Boolean</a></td>
+<td></td>
+</tr>
 </tbody>
 </table>
 
@@ -389,6 +626,55 @@ Type | Description
 </tbody>
 </table>
 
+### PublishFlowResult
+
+<table>
+<thead>
+<tr>
+<th align="left">Field</th>
+<th align="right">Argument</th>
+<th align="left">Type</th>
+<th align="left">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td colspan="2" valign="top"><strong>errors</strong></td>
+<td valign="top">[<a href="#inputerror">InputError</a>]</td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>success</strong></td>
+<td valign="top"><a href="#boolean">Boolean</a></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+
+### StartFlowResult
+
+<table>
+<thead>
+<tr>
+<th align="left">Field</th>
+<th align="right">Argument</th>
+<th align="left">Type</th>
+<th align="left">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td colspan="2" valign="top"><strong>errors</strong></td>
+<td valign="top">[<a href="#inputerror">InputError</a>]</td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>success</strong></td>
+<td valign="top"><a href="#boolean">Boolean</a></td>
+<td></td>
+</tr>
+</tbody>
+</table>
 
 ## Flow Inputs ##
 
@@ -413,6 +699,16 @@ Type | Description
 <td valign="top"><a href="#string">String</a></td>
 <td></td>
 </tr>
+<tr>
+<td colspan="2" valign="top"><strong>keywords</strong></td>
+<td valign="top">[<a href="#string">String</a>]</td>
+<td></td>
+</tr>
+<tr>
+<td colspan="2" valign="top"><strong>ignoreKeywords</strong></td>
+<td valign="top"><a href="#boolean">Boolean</a></td>
+<td></td>
+</tr>
 </tbody>
 </table>
 
@@ -430,9 +726,14 @@ Filtering options for flows
 </thead>
 <tbody>
 <tr>
-  <td colspan="2" valign="top"><strong>Name</strong></td>
+  <td colspan="2" valign="top"><strong>name</strong></td>
   <td valign="top"><a href="#string">String</a></td>
   <td>Match the flow name</td>
+</tr>
+<tr>
+  <td colspan="2" valign="top"><strong>keyword</strong></td>
+  <td valign="top"><a href="#string">String</a></td>
+  <td>Match the flow keyword</td>
 </tr>
 </tbody>
 </table>
