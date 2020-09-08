@@ -10,7 +10,7 @@ defmodule Glific.Application do
 
     children = [
       # Start the Ecto repository
-      {Glific.Repo, config.db}
+      {Glific.Repo, config.db},
 
       # Start the Telemetry supervisor
       GlificWeb.Telemetry,
