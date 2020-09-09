@@ -9,13 +9,22 @@ defmodule Glific.Config do
   dotenv()
 
   config :db,
-         env([
-           {:url, "DB_URL"},
-           {:pool_size, "DB_POOL_SIZE", default: 10, map: &String.to_integer/1}
-         ])
+    env([
+      {:url, "DB_URL"},
+      {:pool_size, "DB_POOL_SIZE", default: 10, map: &String.to_integer/1}
+    ])
 
   config :web,
-         env([
-           {:port, "PORT", default: 4000, map: &String.to_integer/1}
-         ])
+    env([
+      {:host, "HOST", default: "glific.test"},
+      {:port, "PORT", default: 4000, map: &String.to_integer/1},
+      {:scheme, "SCHEME", default: "http"}
+    ])
+
+  config :keys,
+    env([
+      {:gupshup, "GUPSHUP_API_KEY", default: ""},
+      {:appsignal, "APPSIGNAL_API_KEY", default: ""},
+
+    ])
 end

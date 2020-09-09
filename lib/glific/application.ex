@@ -19,7 +19,8 @@ defmodule Glific.Application do
       {Phoenix.PubSub, name: Glific.PubSub},
 
       # Start the Endpoint (http/https)
-      {GlificWeb.Endpoint, [port: config.web.port]},
+      {GlificWeb.Endpoint,
+       [url: [host: config.web.host, port: config.web.port, scheme: config.web.scheme]]},
 
       # Start Mnesia to be used for pow cache store
       Pow.Store.Backend.MnesiaCache,

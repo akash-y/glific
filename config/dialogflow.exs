@@ -1,5 +1,3 @@
-use Mix.Config
-
 # config dialogflow
 config :glific,
   dialogflow_url: "https://dialogflow.clients6.google.com",
