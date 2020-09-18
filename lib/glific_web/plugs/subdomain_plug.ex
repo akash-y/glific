@@ -25,6 +25,8 @@ if Code.ensure_loaded?(Plug) do
     @doc false
     @spec call(Conn.t(), map()) :: Conn.t()
     def call(conn, config) do
+      IO.inspect("Sub domain")
+      IO.inspect(get_subdomain(conn, config))
       Plug.put_organization(conn, get_subdomain(conn, config), config)
     end
 
@@ -33,12 +35,12 @@ if Code.ensure_loaded?(Plug) do
       nil
     end
 
-    defp get_subdomain(
-           %Conn{host: host},
-           %SubdomainPlugConfig{endpoint: endpoint}
-         ) do
+    defp get_subdomain(conn, %SubdomainPlugConfig{endpoint: endpoint}) do
+      host =
+        conn
+        |> Conn.get_req_header("origin")
+        |> hd()
       root_host = endpoint.config(:url)[:host]
-
       if host in [root_host, "localhost", "127.0.0.1", "0.0.0.0"] do
         nil
       else
