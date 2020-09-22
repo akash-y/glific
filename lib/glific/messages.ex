@@ -564,14 +564,15 @@ defmodule Glific.Messages do
   """
   @spec list_conversations(map(), boolean) :: [Conversation.t()] | integer
   def list_conversations(args, count \\ false) do
-    args
-    |> Enum.reduce(
+    query =
+      args
+      |> Enum.reduce(
       Message,
       fn
-        {:ids, ids}, query ->
-          query
-          |> where([m], m.id in ^ids)
-          |> order_by([m], desc: m.inserted_at)
+        # {:ids, ids}, query ->
+        #   query
+        #   |> where([m], m.id in ^ids)
+        #   |> order_by([m], desc: m.inserted_at)
 
         {:filter, filter}, query ->
           query |> conversations_with(filter)
@@ -580,7 +581,13 @@ defmodule Glific.Messages do
           query
       end
     )
-    |> do_list_conversations(args, count)
+
+    query =
+      query
+        |> where([m], m.contact_id in ^args.filter.ids)
+        |> order_by([m], desc: m.inserted_at)
+
+    do_list_conversations(query, args, count)
   end
 
   # given all the messages related to multiple contacts, group them
